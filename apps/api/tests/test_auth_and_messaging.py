@@ -73,10 +73,10 @@ async def test_media_read_and_device_foundations(client):
     voice = await client.post(
         "/api/v1/media/upload",
         headers=first_headers,
-        files={"file": ("voice-message.webm", b"test audio", "audio/webm")},
+        files={"file": ("voice-message.webm", b"test audio", "audio/webm;codecs=opus")},
     )
     assert voice.status_code == 201
-    assert voice.json()["mime_type"] == "audio/webm"
+    assert voice.json()["mime_type"].startswith("audio/webm")
     assert (await client.post(
         f"/api/v1/conversations/{conversation.json()['id']}/read",
         headers=second_headers,

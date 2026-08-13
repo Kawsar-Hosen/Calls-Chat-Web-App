@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import { useAuth } from '@/auth';
@@ -11,6 +11,7 @@ import { useTheme } from '@/theme';
 import type { Message, SocketEvent, User } from '@/types';
 import { Avatar, SkeletonChat } from '@/ui';
 import { useI18n } from '@/i18n';
+import { giphyItems, mediaRecents, rememberMedia, type GiphyItem, type GiphyKind, type RecentItem } from '@/giphy';
 
 function time(value: string) {
   const date = new Date(value);
@@ -38,6 +39,8 @@ export default function ChatScreen() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 250);
   const [voiceUri, setVoiceUri] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [viewer, setViewer] = useState<string | null>(null);
 
   const isGroup = params.groupId != null;
 
@@ -105,6 +108,20 @@ export default function ChatScreen() {
       setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
       setVoiceUri(null);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Voice message could not be sent'); }
+    finally { setSending(false); }
+  };
+
+  const sendEmoji = async (emoji: string) => {
+    setPickerOpen(false); void rememberMedia({ type: 'emoji', value: emoji }); setSending(true);
+    try { const message = await api.sendMessage(params.id, emoji); setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Message could not be sent'); }
+    finally { setSending(false); }
+  };
+
+  const sendGiphy = async (item: GiphyItem) => {
+    setPickerOpen(false); void rememberMedia({ ...item, type: item.kind }); setSending(true);
+    try { const attachment = await api.saveGiphy({ id: item.id, kind: item.kind, title: item.title, url: item.url }); const message = await api.sendMessage(params.id, '', [attachment.id]); setMessages((current) => current.some((row) => row.id === message.id) ? current : [...current, message]); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Media could not be sent'); }
     finally { setSending(false); }
   };
 
@@ -178,7 +195,7 @@ export default function ChatScreen() {
                   {!mine && !grouped ? <Avatar name={memberName(item.senderId) || name} size={30} /> : !mine ? <View style={{ width: 30 }} /> : null}
                   <View style={[styles.bubbleWrap, mine && styles.bubbleMine]}>
                     {!mine && isGroup && !grouped ? <Text style={[styles.sender, { color: colors.accent }]}>{memberName(item.senderId) || 'Unknown'}</Text> : null}
-                     <View style={[styles.bubble, { backgroundColor: mine ? colors.accent : colors.surface, borderColor: mine ? colors.accent : colors.border }]}>{item.deletedAt ? <Text style={[styles.messageText, { color: colors.faint, fontStyle: 'italic' }]}>Message removed</Text> : <>{item.content ? <Text style={[styles.messageText, { color: mine ? colors.accentText : colors.text, textAlign: isRTL ? 'right' : 'left', writingDirection: isRTL ? 'rtl' : 'ltr' }]}>{item.content}</Text> : null}{item.attachments.filter((attachment) => attachment.mimeType.startsWith('audio/')).map((attachment) => <VoicePlayer key={attachment.id} uri={attachment.url} color={mine ? colors.accentText : colors.text} />)}</>}</View>
+                     <View style={[styles.bubble, item.attachments.some((a) => (a.name ?? '').startsWith('GIPHY:')) ? styles.bubbleGiphy : { backgroundColor: mine ? colors.accent : colors.surface, borderColor: mine ? colors.accent : colors.border }]}>{item.deletedAt ? <Text style={[styles.messageText, { color: colors.faint, fontStyle: 'italic' }]}>Message removed</Text> : <>{item.content ? <Text style={[styles.messageText, { color: mine ? colors.accentText : colors.text, textAlign: isRTL ? 'right' : 'left', writingDirection: isRTL ? 'rtl' : 'ltr' }]}>{item.content}</Text> : null}<MessageMedia attachments={item.attachments.filter((attachment) => attachment.mimeType.startsWith('image/'))} onOpen={setViewer} />{item.attachments.filter((attachment) => attachment.mimeType.startsWith('audio/')).map((attachment) => <VoicePlayer key={attachment.id} uri={attachment.url} color={mine ? colors.accentText : colors.text} />)}</>}</View>
                     <Text style={[styles.time, { color: colors.faint }]}>{time(item.createdAt)}{item.editedAt ? '  edited' : ''}</Text>
                   </View>
                 </View>
@@ -193,13 +210,41 @@ export default function ChatScreen() {
           <View style={[styles.composer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <TextInput value={draft} onChangeText={setDraft} placeholder="Write a message" placeholderTextColor={colors.faint} multiline maxLength={10000} style={[styles.input, { color: colors.text, textAlign: isRTL ? 'right' : 'left', writingDirection: isRTL ? 'rtl' : 'ltr' }]} />
             {!voiceUri ? <Pressable accessibilityLabel={recorderState.isRecording ? 'Stop recording' : 'Record voice message'} onPress={() => recorderState.isRecording ? void stopRecording() : void startRecording()} style={styles.mic}><MaterialCommunityIcons name="microphone-outline" size={21} color={colors.muted} /></Pressable> : null}
+            <Pressable accessibilityLabel="Emoji, GIF, or sticker" onPress={() => setPickerOpen(true)} style={styles.mic}><MaterialCommunityIcons name="sticker-emoji" size={21} color={colors.muted} /></Pressable>
             <Pressable accessibilityLabel="Send message" disabled={!draft.trim() || sending} onPress={() => void send()} style={({ pressed }) => [styles.send, { backgroundColor: colors.accent, opacity: !draft.trim() || sending ? 0.45 : pressed ? 0.75 : 1 }]}>{sending ? <ActivityIndicator size="small" color={colors.accentText} /> : <MaterialCommunityIcons name="send" size={19} color={colors.accentText} />}</Pressable>
           </View>
         </View>
+        <MediaPicker visible={pickerOpen} onClose={() => setPickerOpen(false)} onEmoji={(value) => void sendEmoji(value)} onMedia={(item) => void sendGiphy(item)} />
+        <Modal visible={viewer != null} transparent animationType="fade" onRequestClose={() => setViewer(null)}><Pressable onPress={() => setViewer(null)} style={styles.viewer}>{viewer ? <Image source={{ uri: viewer }} resizeMode="contain" style={styles.viewerImage} /> : null}<MaterialCommunityIcons name="close-circle" size={34} color="#FFFFFF" style={styles.viewerClose} /></Pressable></Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+function MessageMedia({ attachments, onOpen }: { attachments: import('@/types').Attachment[]; onOpen: (url: string) => void }) {
+  if (!attachments.length) return null;
+  const shown = attachments.slice(0, 4);
+  const single = attachments.length === 1;
+  const sticker = (attachments[0]?.name ?? '').startsWith('GIPHY:sticker');
+  const giphy = (attachments[0]?.name ?? '').startsWith('GIPHY:');
+  return <View style={[styles.mediaGrid, single && (sticker ? styles.mediaGridSticker : giphy ? styles.mediaGridGif : styles.mediaGridSingle)]}>{shown.map((item, index) => <Pressable key={item.id} onPress={() => onOpen(item.url)} style={[styles.mediaCell, single && (sticker ? styles.mediaCellSticker : giphy ? styles.mediaCellGif : styles.mediaCellSingle), !single && attachments.length === 3 && index === 0 && styles.mediaCellThreeLead]}><Image source={{ uri: item.url }} resizeMode="contain" style={styles.mediaImage} />{index === 3 && attachments.length > 4 ? <View style={styles.mediaMore}><Text style={styles.mediaMoreText}>+{attachments.length - 4}</Text></View> : null}</Pressable>)}</View>;
+}
+
+const EMOJIS = ['😀','😂','😍','🥰','😊','😭','😎','🤔','😅','🙌','👏','👍','❤️','🔥','🎉','✨','🙏','💯','👀','🤝','💙','😴','😡','🤩','🥳','💪','✅','🎂','🌟','🚀'];
+function MediaPicker({ visible, onClose, onEmoji, onMedia }: { visible: boolean; onClose: () => void; onEmoji: (value: string) => void; onMedia: (item: GiphyItem) => void }) {
+  const { colors } = useTheme(); const { height } = useWindowDimensions();
+  const [tab, setTab] = useState<'emoji' | GiphyKind>('emoji'); const [query, setQuery] = useState(''); const [items, setItems] = useState<GiphyItem[]>([]); const [recents, setRecents] = useState<RecentItem[]>([]); const [loading, setLoading] = useState(false); const [error, setError] = useState('');
+  useEffect(() => { if (visible) void mediaRecents().then(setRecents); }, [visible]);
+  useEffect(() => { if (!visible || tab === 'emoji') return; const timer = setTimeout(() => { setLoading(true); setError(''); void giphyItems(tab, query).then(setItems).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load media')).finally(() => setLoading(false)); }, query ? 350 : 0); return () => clearTimeout(timer); }, [visible, tab, query]);
+  const recent = recents.filter((item) => item.type === tab);
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={styles.sheetBackdrop} onPress={onClose}><Pressable onPress={() => undefined} style={[styles.sheet, { maxHeight: height * .72, backgroundColor: colors.surface }]}>
+    <View style={[styles.tabs, { borderBottomColor: colors.border }]}>{(['emoji','gif','sticker'] as const).map((value) => <Pressable key={value} onPress={() => { setTab(value); setQuery(''); }} style={[styles.tab, tab === value && { borderBottomColor: colors.accent }]}><Text style={{ color: tab === value ? colors.accent : colors.muted, fontWeight: '700' }}>{value === 'emoji' ? 'Emoji' : value === 'gif' ? 'GIF' : 'Sticker'}</Text></Pressable>)}</View>
+    <View style={[styles.pickerSearch, { borderColor: colors.border, backgroundColor: colors.background }]}><MaterialCommunityIcons name="magnify" size={18} color={colors.faint} /><TextInput editable={tab !== 'emoji'} value={query} onChangeText={setQuery} placeholder={tab === 'emoji' ? 'Search GIFs and Stickers' : `Search ${tab === 'gif' ? 'GIFs' : 'Stickers'}`} placeholderTextColor={colors.faint} style={{ flex: 1, color: colors.text }} /></View>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.pickerContent}>{recent.length ? <><Text style={[styles.pickerTitle, { color: colors.muted }]}>RECENT</Text><PickerGrid items={recent} tab={tab} onEmoji={onEmoji} onMedia={onMedia} /></> : null}<Text style={[styles.pickerTitle, { color: colors.muted }]}>{tab === 'emoji' ? 'EMOJI' : query ? 'RESULTS' : 'TRENDING'}</Text>{tab === 'emoji' ? <PickerGrid items={EMOJIS.map((value) => ({ type: 'emoji', value }))} tab={tab} onEmoji={onEmoji} onMedia={onMedia} /> : loading ? <ActivityIndicator color={colors.accent} style={{ margin: 50 }} /> : error ? <Text style={[styles.pickerState, { color: colors.muted }]}>Could not load GIPHY. Emoji is still available.</Text> : <PickerGrid items={items.map((item) => ({ ...item, type: item.kind }))} tab={tab} onEmoji={onEmoji} onMedia={onMedia} />}</ScrollView>
+  </Pressable></Pressable></Modal>;
+}
+
+function PickerGrid({ items, tab, onEmoji, onMedia }: { items: RecentItem[]; tab: 'emoji' | GiphyKind; onEmoji: (value: string) => void; onMedia: (item: GiphyItem) => void }) { return <View style={tab === 'emoji' ? styles.emojiGrid : styles.giphyGrid}>{items.map((item) => item.type === 'emoji' ? <Pressable key={item.value} onPress={() => onEmoji(item.value)} style={styles.emojiCell}><Text style={styles.emojiText}>{item.value}</Text></Pressable> : <Pressable key={item.id} onPress={() => onMedia(item)} style={styles.giphyCell}><Image source={{ uri: item.previewUrl }} resizeMode="cover" style={styles.giphyImage} /></Pressable>)}</View>; }
 
 function VoicePlayer({ uri, color }: { uri: string; color: string }) {
   const player = useAudioPlayer(uri, { updateInterval: 200 });
@@ -213,7 +258,10 @@ function duration(value: number) { const seconds = Math.max(0, Math.floor(Number
 const styles = StyleSheet.create({
   safe: { flex: 1 }, header: { height: 67, borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 10 }, iconButton: { width: 38, height: 42, alignItems: 'center', justifyContent: 'center' }, titleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }, identity: { flex: 1, minWidth: 0 }, headerName: { fontSize: 15, fontWeight: '800' }, presence: { fontSize: 11, marginTop: 2 }, groupAvatar: { width: 39, height: 39, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' }, messages: { padding: 16, paddingBottom: 10 }, emptyList: { flexGrow: 1 }, empty: { flex: 1, minHeight: 330, alignItems: 'center', justifyContent: 'center' }, emptyTitle: { fontSize: 17, fontWeight: '800' }, emptyCopy: { marginTop: 7, fontSize: 13 },
-  messageRow: { maxWidth: '88%', flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginBottom: 14 }, mine: { alignSelf: 'flex-end', flexDirection: 'row-reverse' }, grouped: { marginTop: -9 }, bubbleWrap: { alignItems: 'flex-start', minWidth: 45, maxWidth: '100%' }, bubbleMine: { alignItems: 'flex-end' }, sender: { fontSize: 11, fontWeight: '700', marginBottom: 3, paddingHorizontal: 2 }, bubble: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 7, borderBottomLeftRadius: 2, paddingHorizontal: 12, paddingVertical: 9 }, messageText: { fontSize: 15, lineHeight: 21 }, time: { fontSize: 9, marginTop: 4, paddingHorizontal: 2 },
+  messageRow: { maxWidth: '88%', flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginBottom: 14 }, mine: { alignSelf: 'flex-end', flexDirection: 'row-reverse' }, grouped: { marginTop: -9 }, bubbleWrap: { alignItems: 'flex-start', minWidth: 45, maxWidth: '100%' }, bubbleMine: { alignItems: 'flex-end' }, sender: { fontSize: 11, fontWeight: '700', marginBottom: 3, paddingHorizontal: 2 }, bubble: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 7, borderBottomLeftRadius: 2, paddingHorizontal: 12, paddingVertical: 9 }, bubbleGiphy: { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0, borderRadius: 10, paddingHorizontal: 0, paddingVertical: 0 }, messageText: { fontSize: 15, lineHeight: 21 }, time: { fontSize: 9, marginTop: 4, paddingHorizontal: 2 },
   inlineError: { textAlign: 'center', fontSize: 12, paddingHorizontal: 16, paddingTop: 6 }, composerOuter: { paddingHorizontal: 10, paddingTop: 8, paddingBottom: 10 }, composer: { minHeight: 53, maxHeight: 132, borderWidth: 1, borderRadius: 7, paddingLeft: 13, paddingRight: 6, paddingVertical: 5, flexDirection: 'row', alignItems: 'flex-end', gap: 6 }, input: { flex: 1, minHeight: 41, maxHeight: 116, paddingTop: 10, paddingBottom: 8, fontSize: 16, lineHeight: 21 }, send: { width: 41, height: 41, borderRadius: 6, alignItems: 'center', justifyContent: 'center' }, mic: { width: 36, height: 41, alignItems: 'center', justifyContent: 'center' }, recordingBar: { minHeight: 50, marginBottom: 6, paddingHorizontal: 12, borderWidth: 1, borderRadius: 7, flexDirection: 'row', alignItems: 'center', gap: 12 }, voicePlayer: { minWidth: 200, flexDirection: 'row', alignItems: 'center', gap: 7 }, voiceTrack: { width: 130, height: 4, borderRadius: 2, backgroundColor: 'rgba(127,127,127,.3)', overflow: 'hidden' }, voiceProgress: { height: 4, borderRadius: 2 },
+  mediaGrid: { width: 260, marginTop: 5, flexDirection: 'row', flexWrap: 'wrap', gap: 3 }, mediaGridSingle: { width: 270 }, mediaGridGif: { width: 200 }, mediaGridSticker: { width: 140 }, mediaCell: { width: 128, height: 128, overflow: 'hidden', borderRadius: 6, backgroundColor: 'rgba(127,127,127,.15)' }, mediaCellSingle: { width: 270, height: 220 }, mediaCellGif: { width: 200, height: 150, backgroundColor: 'transparent' }, mediaCellSticker: { width: 140, height: 140, backgroundColor: 'transparent' }, mediaCellThreeLead: { height: 259 }, mediaImage: { width: '100%', height: '100%' }, mediaMore: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,.52)' }, mediaMoreText: { color: '#FFFFFF', fontSize: 25, fontWeight: '800' },
+  viewer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(7,9,9,.94)' }, viewerImage: { width: '94%', height: '84%' }, viewerClose: { position: 'absolute', top: 45, right: 18 },
+  sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,.28)' }, sheet: { minHeight: 360, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' }, tabs: { height: 52, flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth }, tab: { flex: 1, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' }, pickerSearch: { height: 45, marginHorizontal: 12, marginTop: 10, paddingHorizontal: 11, borderWidth: 1, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: 8 }, pickerContent: { padding: 12, paddingBottom: 24 }, pickerTitle: { marginBottom: 9, marginTop: 4, fontSize: 10, fontWeight: '800', letterSpacing: 1 }, pickerState: { paddingVertical: 60, textAlign: 'center', fontSize: 13 }, emojiGrid: { flexDirection: 'row', flexWrap: 'wrap' }, emojiCell: { width: '14.28%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' }, emojiText: { fontSize: 26 }, giphyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 }, giphyCell: { width: '49%', height: 120, overflow: 'hidden', borderRadius: 8, backgroundColor: 'rgba(127,127,127,.15)' }, giphyImage: { width: '100%', height: '100%' },
   searchOverlay: { maxHeight: 320, borderBottomWidth: StyleSheet.hairlineWidth }, searchBar: { height: 42, marginHorizontal: 12, marginVertical: 10, borderWidth: 1, borderRadius: 8, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 11, gap: 8 }, searchInput: { flex: 1, fontSize: 15 }, searchList: { paddingHorizontal: 10, paddingBottom: 12 }, searchHint: { textAlign: 'center', fontSize: 13, paddingVertical: 26 }, searchResult: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 7, paddingHorizontal: 11, paddingVertical: 9, marginBottom: 6 }, searchResultText: { fontSize: 14, lineHeight: 19 }, searchResultMeta: { fontSize: 11, marginTop: 3 },
 });

@@ -288,6 +288,9 @@ export const api = {
     form.append('file', { uri, name, type } as unknown as Blob);
     return mapAttachment(await request<Json>('/media/upload', { method: 'POST', body: form }));
   },
+  async saveGiphy(item: { id: string; kind: 'gif' | 'sticker'; title: string; url: string }): Promise<Attachment> {
+    return mapAttachment(await request<Json>('/media/giphy', { method: 'POST', body: JSON.stringify(item) }));
+  },
   async sendMessage(conversationId: string, content: string, attachmentIds: string[] = []) {
     return mapMessage(await request<Json>(`/conversations/${conversationId}/messages`, {
       method: 'POST',

@@ -346,4 +346,5 @@ export const api = {
     form.append('file', file);
     return mapAttachment(await request<Json>('/media/upload', { method: 'POST', body: form }));
   },
+  giphy: async (item: { id: string; kind: 'gif' | 'sticker'; title: string; url: string }): Promise<Attachment> => mapAttachment(await request<Json>('/media/giphy', { method: 'POST', body: JSON.stringify(item) })),
 };

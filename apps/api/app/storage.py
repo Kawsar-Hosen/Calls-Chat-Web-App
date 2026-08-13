@@ -47,15 +47,16 @@ class LocalStorage(Storage):
         self.root = Path(root)
 
     async def save(self, upload: UploadFile, *, avatar: bool = False) -> str:
-        suffix = ALLOWED_FILES.get(upload.content_type or "")
+        content_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
+        suffix = ALLOWED_FILES.get(content_type)
         if not suffix:
             raise HTTPException(status_code=415, detail="Unsupported file type")
         data = await upload.read(settings.max_upload_bytes + 1)
         if len(data) > settings.max_upload_bytes:
             raise HTTPException(status_code=413, detail="File too large")
         self.root.mkdir(parents=True, exist_ok=True)
-        if avatar and upload.content_type in AVATAR_TYPES:
-            data = square_avatar(data, upload.content_type)
+        if avatar and content_type in AVATAR_TYPES:
+            data = square_avatar(data, content_type)
             suffix = ".jpg"
         name = f"{uuid.uuid4()}{suffix}"
         (self.root / name).write_bytes(data)

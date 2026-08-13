@@ -1,4 +1,8 @@
+import asyncio
+import json
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode, urlparse
+from urllib.request import urlopen
 import jwt
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from sqlalchemy import and_, delete, or_, select
@@ -21,6 +25,23 @@ from app.storage import storage
 from app.websocket import manager
 
 router = APIRouter()
+
+
+def _giphy_json(path: str, params: dict[str, str | int]) -> dict:
+    query = urlencode({**params, "api_key": settings.giphy_api_key})
+    with urlopen(f"https://api.giphy.com/v1/{path}?{query}", timeout=8) as response:
+        return json.loads(response.read())
+
+
+def _giphy_item(item: dict, kind: str) -> dict:
+    images = item.get("images", {})
+    original = images.get("original", {})
+    preview = images.get("fixed_width", {}) or images.get("downsized", {}) or original
+    return {
+        "id": str(item.get("id", "")), "kind": kind, "title": str(item.get("title", "")),
+        "url": str(original.get("url", "")), "preview_url": str(preview.get("url", "")),
+        "width": int(original.get("width") or 1), "height": int(original.get("height") or 1),
+    }
 
 
 def pair_key(a: str, b: str) -> str:
@@ -122,6 +143,33 @@ async def upload_media(file: UploadFile = File(...), user: User = Depends(get_cu
         url=url,
         mime_type=file.content_type or "application/octet-stream",
         size=file.size or 0,
+    )
+    db.add(item); await db.commit(); await db.refresh(item)
+    return item
+
+
+@router.get("/giphy/{kind}")
+async def giphy_media(kind: str, q: str = Query(default="", max_length=100), user: User = Depends(get_current_user)):
+    if kind not in {"gifs", "stickers"}: raise HTTPException(404, "Unknown media type")
+    if not settings.giphy_api_key: raise HTTPException(503, "GIPHY is not configured")
+    endpoint = f"{kind}/search" if q.strip() else f"{kind}/trending"
+    params: dict[str, str | int] = {"limit": 24, "rating": "pg", "lang": "en"}
+    if q.strip(): params["q"] = q.strip()
+    try:
+        payload = await asyncio.to_thread(_giphy_json, endpoint, params)
+        return {"items": [_giphy_item(item, "gif" if kind == "gifs" else "sticker") for item in payload.get("data", [])]}
+    except Exception as exc:
+        raise HTTPException(502, "GIPHY is temporarily unavailable") from exc
+
+
+@router.post("/media/giphy", response_model=MediaUploadResponse, status_code=201)
+async def save_giphy_media(data: GiphyMediaCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    parsed = urlparse(data.url)
+    if parsed.scheme != "https" or not (parsed.hostname or "").endswith("giphy.com"):
+        raise HTTPException(422, "Invalid GIPHY media URL")
+    item = MediaAttachment(
+        uploader_id=user.id, name=f"GIPHY:{data.kind}:{(data.title or '').strip()[:200]}", url=data.url,
+        mime_type="image/gif", size=0,
     )
     db.add(item); await db.commit(); await db.refresh(item)
     return item

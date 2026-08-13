@@ -13,6 +13,7 @@ import {
   Eye,
   EyeOff,
   ImageUp,
+  Images,
   LogOut,
   MessageCircle,
   MessageSquarePlus,
@@ -51,6 +52,7 @@ import { Avatar, conversationName, conversationPeer, DeliveryIcon, EmptyState, G
 import type { Attachment, Conversation, FriendRequest, Group, Message, SocketEvent, User } from './types';
 import { useSocket } from './useSocket';
 import { languages, useLocale, type LanguageCode } from './i18n';
+import { giphyItems, mediaRecents, rememberMedia, type GiphyItem, type GiphyKind } from './giphy';
 
 type View = 'messages' | 'contacts' | 'settings';
 type Modal =
@@ -446,11 +448,13 @@ function MessageList({ messages, currentUser, isGroup, onReply, onEdit, onDelete
     const mine = message.sender.id === currentUser.id;
     const previous = messages[index - 1];
     const grouped = previous?.sender.id === message.sender.id && Date.parse(message.createdAt) - Date.parse(previous.createdAt) < 300_000;
+    const giphy = message.attachments.some((item) => (item.name ?? '').startsWith('GIPHY:'));
+    const sticker = message.attachments.some((item) => (item.name ?? '').startsWith('GIPHY:sticker'));
     return <article key={message.id} className={`message ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''}`}>
       {!mine && !grouped && <Avatar user={message.sender} size="sm" />}
       <div className="message-content">
         {!mine && !grouped && <span className="message-author">{isGroup ? message.sender.displayName : message.sender.displayName}</span>}
-        <div className={`bubble ${message.deletedAt ? 'deleted' : ''}`}>
+        <div className={`bubble ${message.deletedAt ? 'deleted' : ''} ${giphy ? 'giphy' : ''} ${sticker ? 'sticker' : ''}`}>
           {message.replyTo && <div className="reply-preview"><Reply /> <span>{message.replyTo.sender.displayName}</span>{message.replyTo.body}</div>}
           {message.deletedAt ? <em>Message removed</em> : <>{message.body && <p>{message.body}</p>}<MessageAttachments attachments={message.attachments} onOpen={setViewer} /></>}
         </div>
@@ -526,6 +530,7 @@ function Composer({ conversationId, currentUser, replyTo, editing, clearContext,
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [voicePreview, setVoicePreview] = useState<{ file: File; url: string } | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => { setBody(editing?.body ?? ''); }, [editing]);
   useEffect(() => () => { window.clearInterval(recordingTimerRef.current); recorderStreamRef.current?.getTracks().forEach((track) => track.stop()); if (voicePreview) URL.revokeObjectURL(voicePreview.url); }, [voicePreview]);
@@ -623,11 +628,37 @@ function Composer({ conversationId, currentUser, replyTo, editing, clearContext,
     <form className="composer" onSubmit={submit}>
       <input ref={fileRef} hidden type="file" onChange={(event) => void uploadFile(event.target.files?.[0])} accept="image/*,.pdf,.txt" />
       <IconButton label="Add attachment" disabled={uploading} onClick={() => fileRef.current?.click()}><Paperclip /></IconButton>
+      {!editing && <IconButton label="Emoji, GIF, or sticker" onClick={() => setPickerOpen((value) => !value)}><Images /></IconButton>}
       <label><span className="sr-only">Message</span><textarea rows={1} value={body} onChange={(event) => updateBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Message" /></label>
       {!editing && !voicePreview && <IconButton label={recording ? 'Stop recording' : 'Record voice message'} disabled={sending} onClick={() => recording ? stopRecording() : void startRecording()}><Mic /></IconButton>}
       <button className="send-button" aria-label={editing ? 'Save edit' : 'Send message'} disabled={sending || (!body.trim() && attachments.length === 0)}>{editing ? <Check /> : <Send />}</button>
     </form>
+    {pickerOpen && <MediaPicker onClose={() => setPickerOpen(false)} onEmoji={async (emoji) => { rememberMedia({ type: 'emoji', value: emoji }); setPickerOpen(false); try { onMessage(await api.sendMessage(conversationId, emoji, replyTo?.id)); clearContext(); } catch (reason) { onError(reason instanceof Error ? reason.message : 'Message could not be sent'); } }} onMedia={async (item) => { rememberMedia({ ...item, type: item.kind }); setPickerOpen(false); try { const attachment = await api.giphy({ id: item.id, kind: item.kind, title: item.title, url: item.url }); onMessage(await api.sendMessage(conversationId, '', replyTo?.id, [attachment.id])); clearContext(); } catch (reason) { onError(reason instanceof Error ? reason.message : 'Media could not be sent'); } }} />}
   </div>;
+}
+
+const EMOJIS = ['😀','😂','😍','🥰','😊','😭','😎','🤔','😅','🙌','👏','👍','❤️','🔥','🎉','✨','🙏','💯','👀','🤝','💙','😴','😡','🤩','🥳','💪','✅','🎂','🌟','🚀'];
+function MediaPicker({ onClose, onEmoji, onMedia }: { onClose: () => void; onEmoji: (emoji: string) => void; onMedia: (item: GiphyItem) => void }) {
+  const [tab, setTab] = useState<'emoji' | GiphyKind>('emoji');
+  const [query, setQuery] = useState('');
+  const [items, setItems] = useState<GiphyItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const recents = mediaRecents().filter((item) => item.type === tab);
+  useEffect(() => {
+    if (tab === 'emoji') return;
+    const timer = window.setTimeout(() => { setLoading(true); setError(''); giphyItems(tab, query).then(setItems).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load media')).finally(() => setLoading(false)); }, query ? 350 : 0);
+    return () => window.clearTimeout(timer);
+  }, [tab, query]);
+  return <div className="media-picker-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="media-picker" role="dialog" aria-label="Emoji, GIF, and sticker picker">
+    <header><nav>{(['emoji','gif','sticker'] as const).map((name) => <button key={name} className={tab === name ? 'active' : ''} onClick={() => { setTab(name); setQuery(''); }}>{name === 'emoji' ? 'Emoji' : name === 'gif' ? 'GIF' : 'Sticker'}</button>)}</nav><button className="picker-close" aria-label="Close" onClick={onClose}><X /></button></header>
+    <div className="media-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tab === 'emoji' ? 'Search is available for GIFs and Stickers' : `Search ${tab === 'gif' ? 'GIFs' : 'Stickers'}`} disabled={tab === 'emoji'} /></div>
+    <div className="picker-scroll">
+      {recents.length > 0 && <><h4>Recent</h4><div className={tab === 'emoji' ? 'emoji-grid' : 'giphy-grid'}>{recents.map((item) => item.type === 'emoji' ? <button key={item.value} onClick={() => onEmoji(item.value)}>{item.value}</button> : <button key={item.id} onClick={() => onMedia(item)}><img src={item.previewUrl} alt={item.title} /></button>)}</div></>}
+      <h4>{tab === 'emoji' ? 'Emoji' : query ? 'Results' : 'Trending'}</h4>
+      {tab === 'emoji' ? <div className="emoji-grid">{EMOJIS.map((emoji) => <button key={emoji} onClick={() => onEmoji(emoji)}>{emoji}</button>)}</div> : loading ? <div className="giphy-grid picker-loading">{Array.from({ length: 12 }).map((_, i) => <i key={i} />)}</div> : error ? <div className="picker-state"><strong>Could not load GIPHY</strong><span>{error}. Emoji is still available.</span></div> : items.length ? <div className="giphy-grid">{items.map((item) => <button key={item.id} onClick={() => onMedia(item)} style={{ aspectRatio: `${item.width}/${item.height}` }}><img src={item.previewUrl} alt={item.title} loading="lazy" /></button>)}</div> : <div className="picker-state">No results found.</div>}
+    </div>
+  </section></div>;
 }
 
 function ContactsView({ me, onMessage, onOpenContact, onOpenRequests, onOpenGroups, onOpenBlacklist, onOpenGroup, onAddGroup, onError }: { me: string; onMessage: (user: User) => void; onOpenContact: (user: User) => void; onOpenRequests: () => void; onOpenGroups: () => void; onOpenBlacklist: () => void; onOpenGroup: (groupId: string) => void; onAddGroup: () => void; onError: (error: string) => void }) {

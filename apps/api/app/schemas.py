@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
@@ -248,6 +249,13 @@ class UploadResponse(BaseModel):
 
 class MediaUploadResponse(AttachmentView):
     pass
+
+
+class GiphyMediaCreate(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    kind: Literal["gif", "sticker"]
+    title: str = Field(default="GIPHY media", max_length=255)
+    url: str = Field(min_length=1, max_length=2000)
 
 
 class DeviceCreate(BaseModel):
