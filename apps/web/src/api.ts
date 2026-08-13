@@ -13,7 +13,7 @@ import type {
   User,
 } from './types';
 
-const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1').replace(/\/$/, '');
+export const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1').replace(/\/$/, '');
 const TOKEN_KEY = 'xyteee.tokens';
 const API_ORIGIN = API_URL.replace(/\/api\/v1$/, '');
 

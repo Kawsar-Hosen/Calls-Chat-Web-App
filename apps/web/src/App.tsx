@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowDown,
@@ -49,6 +49,7 @@ import {
 import { api, resolveAssetUrl } from './api';
 import { useAuth } from './auth';
 import { Avatar, conversationName, conversationPeer, DeliveryIcon, EmptyState, GroupAvatar, SkeletonChat, SkeletonList, timeLabel } from './components';
+import { EmojiText, encodeEmoji, emojiList, FluentEmoji, REACTION_CHOICES } from './emoji';
 import type { Attachment, Conversation, FriendRequest, Group, Message, SocketEvent, User } from './types';
 import { useSocket } from './useSocket';
 import { languages, useLocale, type LanguageCode } from './i18n';
@@ -426,7 +427,7 @@ function Chat({ conversation, messages, setMessages, loading, nextCursor, setNex
       <div className="chat-actions"><IconButton label="Search messages" onClick={() => setSearchOpen(!searchOpen)}><Search /></IconButton><IconButton label="Conversation options" onClick={onOpenSettings}><MoreHorizontal /></IconButton></div>
     </header>
     {searchOpen && <form className="message-search" onSubmit={search}><Search /><input autoFocus value={messageQuery} onChange={(event) => setMessageQuery(event.target.value)} placeholder="Search this conversation" aria-label="Search this conversation" /><button>Search</button><IconButton label="Close search" onClick={() => { setSearchOpen(false); setSearchResults([]); }}><X /></IconButton></form>}
-    {searchResults.length > 0 && <div className="search-results"><span>{searchResults.length} result{searchResults.length === 1 ? '' : 's'}</span>{searchResults.slice(0, 4).map((result) => <button key={result.id}>{result.sender.displayName}: {result.body}</button>)}</div>}
+    {searchResults.length > 0 && <div className="search-results"><span>{searchResults.length} result{searchResults.length === 1 ? '' : 's'}</span>{searchResults.slice(0, 4).map((result) => <button key={result.id}>{result.sender.displayName}: <EmojiText text={result.body} size={13} /></button>)}</div>}
     <div className="message-scroller">
       {nextCursor && <button className="load-older" onClick={loadOlder} disabled={loadingOlder}>{loadingOlder ? 'Loading...' : 'Load earlier messages'}</button>}
       {loading ? <SkeletonChat /> : messages.length === 0 ? <EmptyState title={isGroup ? `Say hello to ${conversation.title ?? 'the group'}` : `Say hello to ${peer?.displayName ?? 'the group'}`} detail="This is the beginning of your conversation." /> : <MessageList messages={messages} currentUser={currentUser} isGroup={isGroup} onReply={setReplyTo} onEdit={(message) => { setEditing(message); setReplyTo(null); }} onDelete={async (message) => { try { await api.deleteMessage(message.id); setMessages((items) => items.map((item) => item.id === message.id ? { ...item, body: '', deletedAt: new Date().toISOString(), attachments: [] } : item)); } catch (reason) { onError(reason instanceof Error ? reason.message : 'Delete failed'); } }} onReact={async (message, emoji) => { try { const updated = await api.react(message.id, emoji); setMessages((items) => items.map((item) => item.id === message.id ? updated : item)); } catch (reason) { onError(reason instanceof Error ? reason.message : 'Reaction failed'); } }} />}
@@ -438,6 +439,7 @@ function Chat({ conversation, messages, setMessages, loading, nextCursor, setNex
 
 function MessageList({ messages, currentUser, isGroup, onReply, onEdit, onDelete, onReact }: { messages: Message[]; currentUser: User; isGroup: boolean; onReply: (message: Message) => void; onEdit: (message: Message) => void; onDelete: (message: Message) => void; onReact: (message: Message, emoji: string) => void }) {
   const [viewer, setViewer] = useState<Attachment | null>(null);
+  const [picking, setPicking] = useState<string | null>(null);
   useEffect(() => {
     if (!viewer) return;
     function close(event: KeyboardEvent) { if (event.key === 'Escape') setViewer(null); }
@@ -455,13 +457,13 @@ function MessageList({ messages, currentUser, isGroup, onReply, onEdit, onDelete
       <div className="message-content">
         {!mine && !grouped && <span className="message-author">{isGroup ? message.sender.displayName : message.sender.displayName}</span>}
         <div className={`bubble ${message.deletedAt ? 'deleted' : ''} ${giphy ? 'giphy' : ''} ${sticker ? 'sticker' : ''}`}>
-          {message.replyTo && <div className="reply-preview"><Reply /> <span>{message.replyTo.sender.displayName}</span>{message.replyTo.body}</div>}
-          {message.deletedAt ? <em>Message removed</em> : <>{message.body && <p>{message.body}</p>}<MessageAttachments attachments={message.attachments} onOpen={setViewer} /></>}
+          {message.replyTo && <div className="reply-preview"><Reply /> <span>{message.replyTo.sender.displayName}</span><EmojiText text={message.replyTo.body} size={13} /></div>}
+          {message.deletedAt ? <em>Message removed</em> : <>{message.body && <p><EmojiText text={message.body} size={20} /></p>}<MessageAttachments attachments={message.attachments} onOpen={setViewer} /></>}
         </div>
-        {!message.deletedAt && message.reactions.length > 0 && <div className="reactions">{message.reactions.map((reaction) => <button className={reaction.reacted ? 'reacted' : ''} key={reaction.emoji} onClick={() => onReact(message, reaction.emoji)}>{reaction.emoji} {reaction.count}</button>)}</div>}
+        {!message.deletedAt && message.reactions.length > 0 && <div className="reactions">{message.reactions.map((reaction) => <button className={reaction.reacted ? 'reacted' : ''} key={reaction.emoji} onClick={() => onReact(message, reaction.emoji)}><FluentEmoji char={reaction.emoji} size={15} /> {reaction.count}</button>)}</div>}
         <div className="message-status"><time>{timeLabel(message.createdAt)}</time>{message.updatedAt && <span>edited</span>}{mine && <DeliveryIcon state={message.delivery} />}</div>
       </div>
-      {!message.deletedAt && <div className="message-tools"><IconButton label="Reply" onClick={() => onReply(message)}><Reply /></IconButton><IconButton label="React" onClick={() => onReact(message, '❤️')}><SmilePlus /></IconButton>{mine && <><IconButton label="Edit" onClick={() => onEdit(message)}><Pencil /></IconButton><IconButton label="Delete" onClick={() => onDelete(message)}><Trash2 /></IconButton></>}</div>}
+      {!message.deletedAt && <div className="message-tools"><IconButton label="Reply" onClick={() => onReply(message)}><Reply /></IconButton><div className="reaction-picker-wrap"><IconButton label="React" onClick={() => setPicking(picking === message.id ? null : message.id)}><SmilePlus /></IconButton>{picking === message.id && <div className="reaction-picker">{REACTION_CHOICES.map((choice) => <button type="button" key={choice} onClick={() => { onReact(message, choice); setPicking(null); }}><FluentEmoji char={choice} size={22} /></button>)}</div>}</div>{mine && <><IconButton label="Edit" onClick={() => onEdit(message)}><Pencil /></IconButton><IconButton label="Delete" onClick={() => onDelete(message)}><Trash2 /></IconButton></>}</div>}
     </article>;
   })}{viewer && <MediaViewer attachment={viewer} onClose={() => setViewer(null)} />}</div>;
 }
@@ -637,9 +639,9 @@ function Composer({ conversationId, currentUser, replyTo, editing, clearContext,
   </div>;
 }
 
-const EMOJIS = ['😀','😂','😍','🥰','😊','😭','😎','🤔','😅','🙌','👏','👍','❤️','🔥','🎉','✨','🙏','💯','👀','🤝','💙','😴','😡','🤩','🥳','💪','✅','🎂','🌟','🚀'];
 function MediaPicker({ onClose, onEmoji, onMedia }: { onClose: () => void; onEmoji: (emoji: string) => void; onMedia: (item: GiphyItem) => void }) {
   const [tab, setTab] = useState<'emoji' | GiphyKind>('emoji');
+  const [emojiMode, setEmojiMode] = useState<'all' | 'fluent' | 'telegram'>('all');
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<GiphyItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -650,13 +652,15 @@ function MediaPicker({ onClose, onEmoji, onMedia }: { onClose: () => void; onEmo
     const timer = window.setTimeout(() => { setLoading(true); setError(''); giphyItems(tab, query).then(setItems).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load media')).finally(() => setLoading(false)); }, query ? 350 : 0);
     return () => window.clearTimeout(timer);
   }, [tab, query]);
+  const emojiCells = useMemo(() => emojiList(emojiMode, query).map((emoji) => encodeEmoji(emoji.char, emoji.family)), [emojiMode, query]);
   return <div className="media-picker-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="media-picker" role="dialog" aria-label="Emoji, GIF, and sticker picker">
     <header><nav>{(['emoji','gif','sticker'] as const).map((name) => <button key={name} className={tab === name ? 'active' : ''} onClick={() => { setTab(name); setQuery(''); }}>{name === 'emoji' ? 'Emoji' : name === 'gif' ? 'GIF' : 'Sticker'}</button>)}</nav><button className="picker-close" aria-label="Close" onClick={onClose}><X /></button></header>
-    <div className="media-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tab === 'emoji' ? 'Search is available for GIFs and Stickers' : `Search ${tab === 'gif' ? 'GIFs' : 'Stickers'}`} disabled={tab === 'emoji'} /></div>
+    <div className="media-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tab === 'emoji' ? 'Search emoji, GIFs and Stickers' : `Search ${tab === 'gif' ? 'GIFs' : 'Stickers'}`} /></div>
+    {tab === 'emoji' && <div className="emoji-family-tabs">{(['all', 'fluent', 'telegram'] as const).map((mode) => <button key={mode} className={emojiMode === mode ? 'active' : ''} onClick={() => setEmojiMode(mode)}>{mode === 'all' ? 'All' : mode === 'fluent' ? 'Fluent' : 'Telegram'}</button>)}</div>}
     <div className="picker-scroll">
-      {recents.length > 0 && <><h4>Recent</h4><div className={tab === 'emoji' ? 'emoji-grid' : 'giphy-grid'}>{recents.map((item) => item.type === 'emoji' ? <button key={item.value} onClick={() => onEmoji(item.value)}>{item.value}</button> : <button key={item.id} onClick={() => onMedia(item)}><img src={item.previewUrl} alt={item.title} /></button>)}</div></>}
-      <h4>{tab === 'emoji' ? 'Emoji' : query ? 'Results' : 'Trending'}</h4>
-      {tab === 'emoji' ? <div className="emoji-grid">{EMOJIS.map((emoji) => <button key={emoji} onClick={() => onEmoji(emoji)}>{emoji}</button>)}</div> : loading ? <div className="giphy-grid picker-loading">{Array.from({ length: 12 }).map((_, i) => <i key={i} />)}</div> : error ? <div className="picker-state"><strong>Could not load GIPHY</strong><span>{error}. Emoji is still available.</span></div> : items.length ? <div className="giphy-grid">{items.map((item) => <button key={item.id} onClick={() => onMedia(item)} style={{ aspectRatio: `${item.width}/${item.height}` }}><img src={item.previewUrl} alt={item.title} loading="lazy" /></button>)}</div> : <div className="picker-state">No results found.</div>}
+      {recents.length > 0 && <><h4>Recent</h4><div className={tab === 'emoji' ? 'emoji-grid' : 'giphy-grid'}>{recents.map((item) => item.type === 'emoji' ? <button key={item.value} onClick={() => onEmoji(item.value)}><EmojiText text={item.value} size={26} /></button> : <button key={item.id} onClick={() => onMedia(item)}><img src={item.previewUrl} alt={item.title} /></button>)}</div></>}
+      <h4>{tab === 'emoji' ? `Emoji · ${emojiMode === 'all' ? 'All' : emojiMode === 'fluent' ? 'Fluent' : 'Telegram'}${query ? ` · ${emojiCells.length}` : ''}` : query ? 'Results' : 'Trending'}</h4>
+      {tab === 'emoji' ? <div className="emoji-grid">{emojiCells.map((value) => <button key={value} onClick={() => onEmoji(value)}><EmojiText text={value} size={26} /></button>)}</div> : loading ? <div className="giphy-grid picker-loading">{Array.from({ length: 12 }).map((_, i) => <i key={i} />)}</div> : error ? <div className="picker-state"><strong>Could not load GIPHY</strong><span>{error}. Emoji is still available.</span></div> : items.length ? <div className="giphy-grid">{items.map((item) => <button key={item.id} onClick={() => onMedia(item)} style={{ aspectRatio: `${item.width}/${item.height}` }}><img src={item.previewUrl} alt={item.title} loading="lazy" /></button>)}</div> : <div className="picker-state">No results found.</div>}
     </div>
   </section></div>;
 }

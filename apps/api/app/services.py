@@ -1,12 +1,39 @@
 from datetime import datetime, timezone
+import json
 
 from fastapi import HTTPException
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (Block, Conversation, ConversationMember, Friendship, Group, GroupMember,
-                        MediaAttachment, Message, Reaction, User)
-from app.schemas import AttachmentView, GroupMemberView, GroupView, GroupSummary, MessageView, ReactionView
+                        MediaAttachment, Message, MessageRead, Reaction, User)
+from app.schemas import (AttachmentView, GroupMemberView, GroupSettings, GroupView, GroupSummary,
+                         MessageView, ReactionView)
+
+DEFAULT_GROUP_SETTINGS = {"can_send": "everyone", "can_send_media": "everyone", "can_add_members": "admins", "can_edit_info": "admins"}
+
+
+def group_settings(group: Group) -> GroupSettings:
+    try:
+        raw = json.loads(group.settings) if group.settings else {}
+        return GroupSettings(**{**DEFAULT_GROUP_SETTINGS, **raw})
+    except Exception:
+        return GroupSettings()
+
+
+def set_group_settings(group: Group, settings: GroupSettings | None) -> None:
+    group.settings = json.dumps(settings.model_dump() if settings else DEFAULT_GROUP_SETTINGS)
+
+
+def group_customization(group: Group) -> dict | None:
+    try:
+        return json.loads(group.customization) if group.customization else None
+    except Exception:
+        return None
+
+
+def set_group_customization(group: Group, customization: dict | None) -> None:
+    group.customization = json.dumps(customization) if customization else None
 
 
 async def ensure_not_blocked(db: AsyncSession, first_id: str, second_id: str) -> None:
@@ -58,10 +85,12 @@ async def message_view(db: AsyncSession, message: Message) -> MessageView:
     attachments = (
         await db.scalars(select(MediaAttachment).where(MediaAttachment.message_id == message.id).order_by(MediaAttachment.created_at))
     ).all()
+    read_by_count = int((await db.scalar(select(func.count(MessageRead.id)).where(MessageRead.message_id == message.id))) or 0)
     return MessageView.model_validate(message).model_copy(
         update={
             "reactions": [ReactionView.model_validate(item) for item in reactions],
             "attachments": [AttachmentView.model_validate(item) for item in attachments],
+            "read_by_count": read_by_count,
         }
     )
 
@@ -133,6 +162,8 @@ async def group_view(db: AsyncSession, group: Group, user_id: str) -> GroupView:
         my_role=mine.role if mine else "member",
         members=member_views,
         updated_at=group.updated_at,
+        settings=group_settings(group),
+        customization=group_customization(group),
     )
 
 

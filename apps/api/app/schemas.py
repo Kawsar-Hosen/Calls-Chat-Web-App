@@ -20,6 +20,8 @@ class UserPublic(ORMModel):
 
 class UserMe(UserPublic):
     email: str
+    phone_code: str | None = None
+    phone: str | None = None
     created_at: datetime
 
 
@@ -27,6 +29,8 @@ class UserSearchResult(UserPublic):
     is_friend: bool = False
     request_status: str | None = None
     is_blocked: bool = False
+    phone_code: str | None = None
+    phone: str | None = None
 
 
 class FriendView(UserPublic):
@@ -78,6 +82,9 @@ class ProfileUpdate(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=80)
     bio: str | None = Field(default=None, max_length=500)
     avatar_url: HttpUrl | None = None
+    email: str | None = Field(default=None, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$", max_length=320)
+    phone_code: str | None = Field(default=None, max_length=8)
+    phone: str | None = Field(default=None, max_length=20)
 
 
 class FriendRequestCreate(BaseModel):
@@ -114,6 +121,14 @@ class ConversationView(BaseModel):
     members: list[UserPublic]
     unread_count: int
     updated_at: datetime
+    last_message: MessageView | None = None
+
+
+class GroupSettings(BaseModel):
+    can_send: Literal["everyone", "admins"] = "everyone"
+    can_send_media: Literal["everyone", "admins"] = "everyone"
+    can_add_members: Literal["everyone", "admins"] = "admins"
+    can_edit_info: Literal["everyone", "admins"] = "admins"
 
 
 class GroupCreate(BaseModel):
@@ -133,6 +148,8 @@ class GroupUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     description: str | None = Field(default=None, max_length=500)
     avatar_url: HttpUrl | None = None
+    settings: GroupSettings | None = None
+    customization: dict | None = None
 
     @field_validator("name")
     @classmethod
@@ -159,6 +176,8 @@ class GroupView(BaseModel):
     my_role: str
     members: list[GroupMemberView]
     updated_at: datetime
+    settings: GroupSettings | None = None
+    customization: dict | None = None
 
 
 class GroupMemberAdd(BaseModel):
@@ -228,6 +247,7 @@ class MessageView(ORMModel):
     created_at: datetime
     reactions: list[ReactionView] = Field(default_factory=list)
     attachments: list[AttachmentView] = Field(default_factory=list)
+    read_by_count: int = 0
 
 
 class MessagePage(BaseModel):

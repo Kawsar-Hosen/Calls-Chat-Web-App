@@ -18,9 +18,11 @@ from app.models import (AuthSession, Block, Conversation, ConversationMember, De
                          MessageRead, Reaction, User, new_id, utcnow)
 from app.rate_limit import auth_rate_limit
 from app.schemas import *
-from app.services import (are_friends, aware, ensure_not_blocked, group_summary, group_view,
-                          member_ids, message_view, public_members, require_group, require_group_member,
-                          require_group_role, require_member, sync_group_conversation_members, unread_count)
+from app.services import (are_friends, aware, ensure_not_blocked, group_customization, group_settings,
+                          group_summary, group_view, member_ids, message_view, public_members,
+                          require_group, require_group_member, require_group_role, require_member,
+                          set_group_customization, set_group_settings, sync_group_conversation_members,
+                          unread_count)
 from app.storage import storage
 from app.websocket import manager
 
@@ -119,8 +121,21 @@ async def profile(user: User = Depends(get_current_user)) -> User:
 async def update_profile(data: ProfileUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if data.username and data.username != user.username and await db.scalar(select(User.id).where(User.username == data.username)):
         raise HTTPException(409, "Username already exists")
-    for key, value in data.model_dump(exclude_unset=True).items():
-        setattr(user, key, str(value) if key == "avatar_url" and value else value)
+    if data.email and data.email.lower() != user.email.lower() and await db.scalar(select(User.id).where(User.email == data.email.lower())):
+        raise HTTPException(409, "Email already exists")
+    updates = data.model_dump(exclude_unset=True)
+    for key, value in updates.items():
+        if key == "avatar_url":
+            if value: setattr(user, key, str(value))
+        elif key == "email":
+            if value: setattr(user, key, value.lower())
+        elif key in ("phone_code", "phone"):
+            pass  # handled together below
+        else:
+            setattr(user, key, value)
+    if "phone_code" in updates or "phone" in updates:
+        user.phone_code = data.phone_code or None
+        user.phone = data.phone or None
     await db.commit()
     await db.refresh(user)
     return user
@@ -175,20 +190,39 @@ async def save_giphy_media(data: GiphyMediaCreate, user: User = Depends(get_curr
     return item
 
 
+async def search_result_for(db: AsyncSession, viewer_id: str, item: User) -> UserSearchResult:
+    friend = await are_friends(db, viewer_id, item.id)
+    blocked = bool(await db.scalar(select(Block.id).where(or_(and_(Block.blocker_id == viewer_id, Block.blocked_id == item.id), and_(Block.blocker_id == item.id, Block.blocked_id == viewer_id)))))
+    request = await db.scalar(select(FriendRequest).where(or_((FriendRequest.requester_id == viewer_id) & (FriendRequest.recipient_id == item.id), (FriendRequest.requester_id == item.id) & (FriendRequest.recipient_id == viewer_id)), FriendRequest.status == "pending"))
+    request_status = None
+    if request:
+        request_status = "outgoing" if request.requester_id == viewer_id else "incoming"
+    return UserSearchResult.model_validate(item).model_copy(update={"is_friend": friend, "request_status": request_status, "is_blocked": blocked})
+
+
 @router.get("/users/search", response_model=list[UserSearchResult])
-async def search_users(q: str = Query(min_length=1, max_length=80), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def search_users(q: str = Query(min_length=1, max_length=80), field: str = Query(default="username", pattern="^(username|email|number)$"), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     pattern = f"%{q}%"
-    users = list((await db.scalars(select(User).where(User.id != user.id, or_(User.username.ilike(pattern), User.display_name.ilike(pattern))).limit(20))).all())
+    query_text = q.strip().lstrip("+")
+    conditions = [User.id != user.id]
+    if field == "email":
+        conditions.append(User.email.ilike(pattern))
+    elif field == "number":
+        conditions.append(or_(User.phone.ilike(f"%{query_text}%"), User.phone_code.ilike(f"%{query_text}%")))
+    else:
+        conditions.append(or_(User.username.ilike(pattern), User.display_name.ilike(pattern)))
+    users = list((await db.scalars(select(User).where(*conditions).limit(20))).all())
     result = []
     for item in users:
-        friend = await are_friends(db, user.id, item.id)
-        blocked = bool(await db.scalar(select(Block.id).where(or_(and_(Block.blocker_id == user.id, Block.blocked_id == item.id), and_(Block.blocker_id == item.id, Block.blocked_id == user.id)))))
-        request = await db.scalar(select(FriendRequest).where(or_((FriendRequest.requester_id == user.id) & (FriendRequest.recipient_id == item.id), (FriendRequest.requester_id == item.id) & (FriendRequest.recipient_id == user.id)), FriendRequest.status == "pending"))
-        request_status = None
-        if request:
-            request_status = "outgoing" if request.requester_id == user.id else "incoming"
-        result.append(UserSearchResult.model_validate(item).model_copy(update={"is_friend": friend, "request_status": request_status, "is_blocked": blocked}))
+        result.append(await search_result_for(db, user.id, item))
     return result
+
+
+@router.get("/users/{user_id}", response_model=UserSearchResult)
+async def get_user(user_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    item = await db.get(User, user_id)
+    if not item or item.id == user.id: raise HTTPException(404, "User not found")
+    return await search_result_for(db, user.id, item)
 
 
 @router.post("/friends/requests", response_model=FriendRequestView, status_code=201)
@@ -281,7 +315,6 @@ async def create_conversation(data: ConversationCreate, user: User = Depends(get
     other = await db.get(User, data.user_id)
     if not other or other.id == user.id: raise HTTPException(404, "User not found")
     await ensure_not_blocked(db, user.id, other.id)
-    if not await are_friends(db, user.id, other.id): raise HTTPException(403, "Users must be friends")
     key = pair_key(user.id, other.id); conversation = await db.scalar(select(Conversation).where(Conversation.direct_key == key))
     if not conversation:
         conversation = Conversation(direct_key=key); db.add(conversation); await db.flush(); db.add_all([ConversationMember(conversation_id=conversation.id, user_id=user.id), ConversationMember(conversation_id=conversation.id, user_id=other.id)]); await db.commit()
@@ -297,6 +330,14 @@ async def conversation_view(db: AsyncSession, conversation: Conversation, user_i
         if group:
             base.title = group.name
             base.group = await group_summary(db, group, user_id)
+    last = await db.scalar(
+        select(Message)
+        .where(Message.conversation_id == conversation.id, Message.deleted_at.is_(None))
+        .order_by(Message.created_at.desc())
+        .limit(1)
+    )
+    if last:
+        base.last_message = await message_view(db, last)
     return base
 
 
@@ -321,6 +362,17 @@ async def list_messages(conversation_id: str, before: datetime | None = None, li
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageView, status_code=201)
 async def send_message(conversation_id: str, data: MessageCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_member(db, conversation_id, user.id)
+    conversation = await db.get(Conversation, conversation_id)
+    if conversation.kind == "group":
+        group = await db.scalar(select(Group).where(Group.conversation_id == conversation_id))
+        if group:
+            member = await require_group_member(db, group.id, user.id)
+            settings = group_settings(group)
+            is_privileged = member.role in ("owner", "admin")
+            if settings.can_send == "admins" and not is_privileged:
+                raise HTTPException(403, "Only admins can send messages in this group")
+            if data.attachment_ids and settings.can_send_media == "admins" and not is_privileged:
+                raise HTTPException(403, "Only admins can send media in this group")
     if not data.content and not data.attachment_ids: raise HTTPException(422, "Message or attachment required")
     if data.reply_to_id and not await db.scalar(select(Message.id).where(Message.id == data.reply_to_id, Message.conversation_id == conversation_id)): raise HTTPException(400, "Reply target not found")
     attachments = []
@@ -409,6 +461,7 @@ async def create_group(data: GroupCreate, user: User = Depends(get_current_user)
         await ensure_not_blocked(db, user.id, member_id)
     conversation = Conversation(kind="group"); db.add(conversation); await db.flush()
     group = Group(name=data.name, description=data.description, conversation_id=conversation.id, owner_id=user.id)
+    set_group_settings(group, None)
     db.add(group); await db.flush()
     for member_id in member_ids:
         db.add(GroupMember(group_id=group.id, user_id=member_id, role="owner" if member_id == user.id else "member"))
@@ -440,7 +493,18 @@ async def group_detail(group_id: str, user: User = Depends(get_current_user), db
 @router.patch("/groups/{group_id}", response_model=GroupView)
 async def update_group(group_id: str, data: GroupUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     group = await require_group(db, group_id)
-    await require_group_role(db, group.id, user.id, ("owner", "admin"))
+    if data.settings is not None:
+        await require_group_role(db, group.id, user.id, ("owner", "admin"))
+        set_group_settings(group, data.settings)
+    elif data.customization is not None:
+        await require_group_role(db, group.id, user.id, ("owner", "admin"))
+        set_group_customization(group, data.customization)
+    else:
+        current = group_settings(group)
+        if current.can_edit_info == "admins":
+            await require_group_role(db, group.id, user.id, ("owner", "admin"))
+        else:
+            await require_group_member(db, group.id, user.id)
     if data.name is not None: group.name = data.name
     if data.description is not None: group.description = data.description
     if data.avatar_url is not None: group.avatar_url = str(data.avatar_url)
@@ -453,7 +517,11 @@ async def update_group(group_id: str, data: GroupUpdate, user: User = Depends(ge
 @router.post("/groups/{group_id}/members", response_model=GroupView)
 async def add_group_members(group_id: str, data: GroupMemberAdd, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     group = await require_group(db, group_id)
-    await require_group_role(db, group.id, user.id, ("owner", "admin"))
+    current = group_settings(group)
+    if current.can_add_members == "admins":
+        await require_group_role(db, group.id, user.id, ("owner", "admin"))
+    else:
+        await require_group_member(db, group.id, user.id)
     for member_id in data.user_ids:
         if not await db.get(User, member_id): raise HTTPException(400, "Unknown user")
         await ensure_not_blocked(db, user.id, member_id)
