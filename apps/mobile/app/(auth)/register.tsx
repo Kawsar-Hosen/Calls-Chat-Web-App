@@ -1,54 +1,64 @@
-import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
+import { useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/auth';
-import { useTheme } from '@/theme';
-import { BrandMark, ErrorText, Field, PrimaryButton } from '@/ui';
+import { useI18n } from '@/i18n';
+import { AuthTopBar } from '@/authTopBar';
+import { BrandMark, ErrorText, PrimaryButton } from '@/ui';
 
 export default function RegisterScreen() {
   const { register } = useAuth();
-  const { colors } = useTheme();
+  const { t, isRTL } = useI18n();
   const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const valid = displayName.trim() && /^[a-zA-Z0-9_]{3,32}$/.test(username) && email.includes('@') && password.length >= 8;
+  const valid = Boolean(displayName.trim() && /^[a-zA-Z0-9_]{3,32}$/.test(username) && email.includes('@') && password.length >= 8 && confirmPassword.length >= 8);
 
   const submit = async () => {
+    if (password !== confirmPassword) { setError(t('authPasswordsMismatch')); return; }
     setError(''); setLoading(true);
     try { await register({ displayName: displayName.trim(), username: username.trim(), email: email.trim(), password }); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to create account'); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : t('authUnableCreate')); }
     finally { setLoading(false); }
   };
 
-  return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.brandRow}><BrandMark size={36} /><Text style={[styles.brandName, { color: colors.text }]}>XYTEEE</Text></View>
-          <Text style={[styles.heading, { color: colors.text }]}>Make room for better conversation.</Text>
-          <Text style={[styles.subheading, { color: colors.muted }]}>Start with a few details. You can refine your profile later.</Text>
+  return <SafeAreaView style={styles.safe}>
+    <AuthTopBar mode="register" />
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+        <View style={styles.card}>
+          <View style={[styles.brand, isRTL && styles.rowReverse]}><BrandMark size={36} /><Text style={styles.brandName}>XYTEEE</Text></View>
+          <View style={styles.heading}><Text style={styles.title}>{t('authCreate')}</Text><Text style={styles.subtitle}>{t('authRegisterSubtitle')}</Text></View>
           <View style={styles.form}>
-            <Field value={displayName} onChangeText={setDisplayName} placeholder="Display name" autoComplete="name" />
-            <Field value={username} onChangeText={setUsername} placeholder="Username" autoCapitalize="none" autoCorrect={false} />
-            <Field value={email} onChangeText={setEmail} placeholder="Email address" keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
-            <Field value={password} onChangeText={setPassword} placeholder="Password, 8 characters minimum" secureTextEntry autoComplete="new-password" onSubmitEditing={() => valid && void submit()} />
+            <AuthField icon="account-outline" value={displayName} onChangeText={setDisplayName} placeholder={t('authFullName')} autoComplete="name" />
+            <AuthField icon="at" value={username} onChangeText={setUsername} placeholder={t('authUsername')} autoCapitalize="none" autoCorrect={false} />
+            <AuthField icon="email-outline" value={email} onChangeText={setEmail} placeholder={t('authEmail')} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
+            <AuthField icon="lock-outline" value={password} onChangeText={setPassword} placeholder={t('authPasswordMinimum')} secureTextEntry={!showPassword} autoComplete="new-password" right={<Pressable accessibilityLabel={showPassword ? t('authHidePassword') : t('authShowPassword')} onPress={() => setShowPassword((value) => !value)} style={styles.eye}><MaterialCommunityIcons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={19} color="#94A3B8" /></Pressable>} />
+            <AuthField icon="lock-check-outline" value={confirmPassword} onChangeText={setConfirmPassword} placeholder={t('authConfirmPassword')} secureTextEntry={!showPassword} autoComplete="new-password" onSubmitEditing={() => valid && void submit()} />
             {error ? <ErrorText>{error}</ErrorText> : null}
-            <PrimaryButton title="Create account" loading={loading} disabled={!valid} onPress={() => void submit()} />
+            <PrimaryButton title={t('authCreateAccount')} loading={loading} disabled={!valid} onPress={() => void submit()} />
           </View>
-          <View style={styles.switchRow}><Text style={{ color: colors.muted }}>Already have an account?</Text><Link href="/login" asChild><Pressable><Text style={[styles.link, { color: colors.accent }]}>Sign in</Text></Pressable></Link></View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
+          <Divider />
+          <GoogleButton label={t('authSignupGoogle')} onPress={() => setError(t('authGoogleUnavailable'))} />
+          <View style={[styles.switchRow, isRTL && styles.rowReverse]}><Text style={styles.switchCopy}>{t('authHaveAccount')}</Text><Link href="/login" asChild><Pressable><Text style={styles.linkStrong}>{t('authSignin')}</Text></Pressable></Link></View>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  </SafeAreaView>;
 }
 
+type AuthFieldProps = React.ComponentProps<typeof TextInput> & { icon: React.ComponentProps<typeof MaterialCommunityIcons>['name']; right?: React.ReactNode };
+function AuthField({ icon, right, ...props }: AuthFieldProps) { const { isRTL } = useI18n(); return <View style={[styles.inputWrap, isRTL && styles.rowReverse]}><MaterialCommunityIcons name={icon} size={19} color="#94A3B8" /><TextInput placeholderTextColor="#9CA3AF" {...props} style={[styles.input, { textAlign: isRTL ? 'right' : 'left', writingDirection: isRTL ? 'rtl' : 'ltr' }]} />{right}</View>; }
+function Divider() { const { t } = useI18n(); return <View style={styles.divider}><View style={styles.line} /><Text style={styles.or}>{t('authOr')}</Text><View style={styles.line} /></View>; }
+function GoogleButton({ label, onPress }: { label: string; onPress: () => void }) { const { isRTL } = useI18n(); return <Pressable onPress={onPress} style={({ pressed }) => [styles.google, isRTL && styles.rowReverse, pressed && { opacity: 0.72 }]}><Text style={styles.googleMark}>G</Text><Text style={styles.googleText}>{label}</Text></Pressable>; }
+
 const styles = StyleSheet.create({
-  safe: { flex: 1 }, content: { flexGrow: 1, padding: 24, paddingBottom: 36 }, brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
-  brandName: { fontSize: 18, fontWeight: '800' }, heading: { fontSize: 34, lineHeight: 40, fontWeight: '700', marginTop: 44, maxWidth: 440 },
-  subheading: { fontSize: 15, lineHeight: 23, marginTop: 12 }, form: { gap: 12, marginTop: 28 },
-  switchRow: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 7, marginTop: 22 }, link: { fontWeight: '800' },
+  safe: { flex: 1, backgroundColor: '#F8FAFC' }, page: { flexGrow: 1, justifyContent: 'center', padding: 14, paddingTop: 72, paddingBottom: 18 }, card: { width: '100%', maxWidth: 440, alignSelf: 'center', padding: 20, borderWidth: 1, borderColor: '#E8EDF3', borderRadius: 18, backgroundColor: '#FFFFFF' }, brand: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }, rowReverse: { flexDirection: 'row-reverse' }, brandName: { color: '#111827', fontSize: 18, fontWeight: '800' }, heading: { marginTop: 20, marginBottom: 18, alignItems: 'center' }, title: { color: '#111827', fontSize: 24, lineHeight: 30, fontWeight: '800', textAlign: 'center' }, subtitle: { color: '#64748B', fontSize: 13, lineHeight: 19, marginTop: 6, textAlign: 'center' }, form: { gap: 10 }, inputWrap: { minHeight: 48, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, backgroundColor: '#F8FAFC' }, input: { flex: 1, minWidth: 0, color: '#111827', fontSize: 14, paddingVertical: 0 }, eye: { width: 30, height: 38, alignItems: 'center', justifyContent: 'center' }, divider: { marginVertical: 17, flexDirection: 'row', alignItems: 'center', gap: 12 }, line: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: '#E5E7EB' }, or: { color: '#94A3B8', fontSize: 12 }, google: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderWidth: 1, borderColor: '#DFE5EC', borderRadius: 12, backgroundColor: '#FFFFFF' }, googleMark: { color: '#4285F4', fontSize: 18, fontWeight: '900' }, googleText: { color: '#1F2937', fontSize: 13, fontWeight: '700', flexShrink: 1, textAlign: 'center' }, switchRow: { marginTop: 18, flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 6 }, switchCopy: { color: '#64748B', fontSize: 13 }, linkStrong: { color: '#2563EB', fontSize: 13, fontWeight: '800' },
 });

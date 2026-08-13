@@ -1,7 +1,7 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as SecureStore from 'expo-secure-store';
 import { Image } from 'react-native';
-import type { AuthResult, Conversation, FriendRequest, Group, GroupApplication, GroupMember, GroupRole, GroupSummary, Message, Tokens, User, UserSearchResult } from './types';
+import type { Attachment, AuthResult, Conversation, FriendRequest, Group, GroupApplication, GroupMember, GroupRole, GroupSummary, Message, Tokens, User, UserSearchResult } from './types';
 
 type Json = Record<string, unknown>;
 const TOKEN_KEY = 'xyteee.session';
@@ -73,7 +73,13 @@ export function mapMessage(raw: Json): Message {
     createdAt: String(raw.created_at),
     editedAt: raw.edited_at ? String(raw.edited_at) : null,
     deletedAt: raw.deleted_at ? String(raw.deleted_at) : null,
+    attachments: ((raw.attachments ?? []) as Json[]).map(mapAttachment),
   };
+}
+
+function mapAttachment(raw: Json): Attachment {
+  const url = String(raw.url ?? '');
+  return { id: String(raw.id), name: String(raw.name ?? 'Attachment'), url: url.startsWith('/') ? `${API_ORIGIN}${url}` : url, mimeType: String(raw.mime_type ?? 'application/octet-stream'), size: Number(raw.size ?? 0) };
 }
 
 function mapTokens(raw: Json): Tokens {
@@ -277,10 +283,15 @@ export const api = {
   async searchMessages(query: string, conversationId?: string): Promise<Message[]> {
     return extractItems(await request<unknown>(`/messages/search?q=${encodeURIComponent(query)}${conversationId ? `&conversation_id=${conversationId}` : ''}`)).map(mapMessage);
   },
-  async sendMessage(conversationId: string, content: string) {
+  async uploadMedia(uri: string, name: string, type: string): Promise<Attachment> {
+    const form = new FormData();
+    form.append('file', { uri, name, type } as unknown as Blob);
+    return mapAttachment(await request<Json>('/media/upload', { method: 'POST', body: form }));
+  },
+  async sendMessage(conversationId: string, content: string, attachmentIds: string[] = []) {
     return mapMessage(await request<Json>(`/conversations/${conversationId}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, attachment_ids: attachmentIds }),
     }));
   },
   registerDevice: (pushToken: string, platform: 'ios' | 'android') => request<void>('/devices', {

@@ -9,10 +9,14 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  FileType,
+  Eye,
+  EyeOff,
   ImageUp,
   LogOut,
   MessageCircle,
   MessageSquarePlus,
+  Mic,
   Moon,
   MoreHorizontal,
   Paperclip,
@@ -23,11 +27,17 @@ import {
   Send,
   Settings,
   Languages,
+  LockKeyhole,
+  Mail,
   Shield,
   ShieldCheck,
   SmilePlus,
   Sun,
   Trash2,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
   Unlock,
   UserCheck,
   UserPlus,
@@ -61,9 +71,69 @@ function IconButton({ label, children, onClick, className = '', disabled = false
 
 function AuthScreen() {
   const { login, register } = useAuth();
+  const { t, rtl, language, setLanguage } = useLocale();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [voiceOn, setVoiceOn] = useState(() => localStorage.getItem('xyteee.voice') === '1');
+  const [langOpen, setLangOpen] = useState(false);
+  const toolsRef = useRef<HTMLDivElement>(null);
+
+  const speechLang: Record<LanguageCode, string> = { bn: 'bn-BD', en: 'en-US', id: 'id-ID', hi: 'hi-IN', ar: 'ar-SA', es: 'es-ES', pt: 'pt-BR' };
+  const [voicesTick, setVoicesTick] = useState(0);
+
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) return;
+    const load = () => { window.speechSynthesis.getVoices(); setVoicesTick((value) => value + 1); };
+    load();
+    window.speechSynthesis.onvoiceschanged = load;
+    return () => { window.speechSynthesis.onvoiceschanged = null; };
+  }, []);
+
+  function pickVoice(target: string) {
+    const voices = window.speechSynthesis.getVoices();
+    const prefix = target.split('-')[0]?.toLowerCase() ?? target.toLowerCase();
+    return voices.find((voice) => voice.lang.toLowerCase() === target.toLowerCase())
+      ?? voices.find((voice) => voice.lang.toLowerCase().startsWith(prefix));
+  }
+
+  function speakGuide() {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const target = speechLang[language] ?? 'en-US';
+    const utterance = new SpeechSynthesisUtterance(t(mode === 'login' ? 'authVoiceLoginGuide' : 'authVoiceRegisterGuide'));
+    utterance.lang = target;
+    const voice = pickVoice(target);
+    if (voice) utterance.voice = voice;
+    utterance.rate = 1;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  useEffect(() => {
+    if (voiceOn) speakGuide();
+    else window.speechSynthesis.cancel();
+    return () => window.speechSynthesis.cancel();
+  }, [voiceOn, language, mode, voicesTick]);
+
+  useEffect(() => {
+    if (!langOpen) return;
+    function onPointerDown(event: MouseEvent) { if (toolsRef.current && !toolsRef.current.contains(event.target as Node)) setLangOpen(false); }
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [langOpen]);
+
+  function toggleVoice() {
+    const next = !voiceOn;
+    setVoiceOn(next);
+    localStorage.setItem('xyteee.voice', next ? '1' : '0');
+  }
+
+  function changeMode(next: 'login' | 'register') {
+    setMode(next);
+    setError('');
+    setShowPassword(false);
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,37 +142,55 @@ function AuthScreen() {
     const data = new FormData(event.currentTarget);
     try {
       if (mode === 'login') await login(String(data.get('email')), String(data.get('password')));
-      else await register({
-        displayName: String(data.get('displayName')),
-        username: String(data.get('username')),
-        email: String(data.get('email')),
-        password: String(data.get('password')),
-      });
+      else {
+        const password = String(data.get('password'));
+        if (password !== String(data.get('confirmPassword'))) throw new Error(t('authPasswordsMismatch'));
+        await register({
+          displayName: String(data.get('displayName')),
+          username: String(data.get('username')),
+          email: String(data.get('email')),
+          password,
+        });
+      }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Unable to continue');
+      if (reason instanceof Error && reason.message === 'Invalid email or password') setError(t('authInvalidCredentials'));
+      else if (reason instanceof Error && reason.message === 'Email or username already exists') setError(t('authAccountExists'));
+      else setError(reason instanceof Error ? reason.message : t('authUnableContinue'));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <main className="auth-page">
+    <main className="auth-page" dir={rtl ? 'rtl' : 'ltr'}>
+      <div className="auth-tools" ref={toolsRef}>
+        <div className="auth-tool">
+          <button type="button" className="auth-tool-btn" aria-label={t('chooseLanguage')} title={t('chooseLanguage')} onClick={() => setLangOpen((value) => !value)}><Languages /></button>
+          {langOpen && <div className="lang-menu" role="menu" aria-label={t('chooseLanguage')}>
+            {languages.map(([code, , native]) => {
+              const active = code === language;
+              return <button type="button" key={code} role="menuitemradio" aria-checked={active} className={active ? 'active' : ''} onClick={() => { setLanguage(code); setLangOpen(false); }}>{native}{active ? <Check /> : null}</button>;
+            })}
+          </div>}
+        </div>
+        <button type="button" className={`auth-tool-btn${voiceOn ? ' on' : ''}`} aria-label={voiceOn ? t('authVoiceStop') : t('authVoiceStart')} title={voiceOn ? t('authVoiceStop') : t('authVoiceStart')} onClick={toggleVoice}>{voiceOn ? <Volume2 /> : <VolumeX />}</button>
+      </div>
       <section className="auth-panel">
         <div className="auth-form-wrap">
-          <span className="mobile-brand"><MessageCircle /> XYTEEE</span>
-          <h2>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
-          <p>{mode === 'login' ? 'Sign in to continue your conversations.' : 'Start a quieter way to stay connected.'}</p>
-          <div className="auth-tabs" role="tablist">
-            <button role="tab" aria-selected={mode === 'login'} onClick={() => setMode('login')}>Sign in</button>
-            <button role="tab" aria-selected={mode === 'register'} onClick={() => setMode('register')}>Register</button>
-          </div>
+          <div className="auth-brand"><span><MessageCircle /></span><strong>XYTEEE</strong></div>
+          <div className="auth-heading"><h1>{mode === 'login' ? t('authWelcome') : t('authCreate')}</h1><p>{mode === 'login' ? t('authLoginSubtitle') : t('authRegisterSubtitle')}</p></div>
           <form onSubmit={submit} className="auth-form">
-            {mode === 'register' && <div className="field-row"><label>Display name<input name="displayName" autoComplete="name" required /></label><label>Username<input name="username" autoComplete="username" pattern="[a-zA-Z0-9_.-]+" required /></label></div>}
-            <label>Email address<input name="email" type="email" autoComplete="email" required /></label>
-            <label>Password<input name="password" type="password" minLength={8} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required /></label>
+            {mode === 'register' && <><label>{t('authFullName')}<div className="auth-input"><UserRound /><input name="displayName" autoComplete="name" placeholder={t('authNamePlaceholder')} required /></div></label><label>{t('authUsername')}<div className="auth-input"><UserCheck /><input name="username" autoComplete="username" placeholder={t('authUsernamePlaceholder')} pattern="[a-zA-Z0-9_]{3,32}" required /></div></label></>}
+            <label>{t('authEmail')}<div className="auth-input"><Mail /><input name="email" type="email" autoComplete="email" placeholder={t('authEmailPlaceholder')} required /></div></label>
+            <label>{t('authPassword')}<div className="auth-input"><LockKeyhole /><input name="password" type={showPassword ? 'text' : 'password'} minLength={8} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder={mode === 'login' ? t('authPasswordPlaceholder') : t('authPasswordMinimum')} required /><button type="button" className="password-toggle" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? t('authHidePassword') : t('authShowPassword')}>{showPassword ? <EyeOff /> : <Eye />}</button></div></label>
+            {mode === 'register' && <label>{t('authConfirmPassword')}<div className="auth-input"><LockKeyhole /><input name="confirmPassword" type={showPassword ? 'text' : 'password'} minLength={8} autoComplete="new-password" placeholder={t('authRepeatPassword')} required /></div></label>}
+            {mode === 'login' && <button type="button" className="forgot-link" onClick={() => setError(t('authRecoveryUnavailable'))}>{t('authForgotPassword')}</button>}
             {error && <div className="inline-error" role="alert">{error}</div>}
-            <button className="primary-button auth-submit" disabled={busy}>{busy ? 'Please wait...' : mode === 'login' ? 'Sign in' : 'Create account'}</button>
+            <button className="primary-button auth-submit" disabled={busy}>{busy ? t('authPleaseWait') : mode === 'login' ? t('authContinue') : t('authCreateAccount')}</button>
           </form>
+          <div className="auth-divider"><span>{t('authOr')}</span></div>
+          <button type="button" className="google-button" onClick={() => setError(t('authGoogleUnavailable'))}><span className="google-mark">G</span>{mode === 'login' ? t('authContinueGoogle') : t('authSignupGoogle')}</button>
+          <p className="auth-switch">{mode === 'login' ? t('authNoAccount') : t('authHaveAccount')} <button type="button" onClick={() => changeMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? t('authSignup') : t('authSignin')}</button></p>
         </div>
       </section>
     </main>
@@ -347,6 +435,13 @@ function Chat({ conversation, messages, setMessages, loading, nextCursor, setNex
 }
 
 function MessageList({ messages, currentUser, isGroup, onReply, onEdit, onDelete, onReact }: { messages: Message[]; currentUser: User; isGroup: boolean; onReply: (message: Message) => void; onEdit: (message: Message) => void; onDelete: (message: Message) => void; onReact: (message: Message, emoji: string) => void }) {
+  const [viewer, setViewer] = useState<Attachment | null>(null);
+  useEffect(() => {
+    if (!viewer) return;
+    function close(event: KeyboardEvent) { if (event.key === 'Escape') setViewer(null); }
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [viewer]);
   return <div className="message-list">{messages.map((message, index) => {
     const mine = message.sender.id === currentUser.id;
     const previous = messages[index - 1];
@@ -357,14 +452,64 @@ function MessageList({ messages, currentUser, isGroup, onReply, onEdit, onDelete
         {!mine && !grouped && <span className="message-author">{isGroup ? message.sender.displayName : message.sender.displayName}</span>}
         <div className={`bubble ${message.deletedAt ? 'deleted' : ''}`}>
           {message.replyTo && <div className="reply-preview"><Reply /> <span>{message.replyTo.sender.displayName}</span>{message.replyTo.body}</div>}
-          {message.deletedAt ? <em>Message removed</em> : <>{message.body && <p>{message.body}</p>}{message.attachments.map((attachment) => <a className="attachment" href={attachment.url} target="_blank" rel="noreferrer" key={attachment.id}><FileText /><span>{attachment.name}<small>{formatSize(attachment.size)}</small></span></a>)}</>}
+          {message.deletedAt ? <em>Message removed</em> : <>{message.body && <p>{message.body}</p>}<MessageAttachments attachments={message.attachments} onOpen={setViewer} /></>}
         </div>
         {!message.deletedAt && message.reactions.length > 0 && <div className="reactions">{message.reactions.map((reaction) => <button className={reaction.reacted ? 'reacted' : ''} key={reaction.emoji} onClick={() => onReact(message, reaction.emoji)}>{reaction.emoji} {reaction.count}</button>)}</div>}
         <div className="message-status"><time>{timeLabel(message.createdAt)}</time>{message.updatedAt && <span>edited</span>}{mine && <DeliveryIcon state={message.delivery} />}</div>
       </div>
       {!message.deletedAt && <div className="message-tools"><IconButton label="Reply" onClick={() => onReply(message)}><Reply /></IconButton><IconButton label="React" onClick={() => onReact(message, '❤️')}><SmilePlus /></IconButton>{mine && <><IconButton label="Edit" onClick={() => onEdit(message)}><Pencil /></IconButton><IconButton label="Delete" onClick={() => onDelete(message)}><Trash2 /></IconButton></>}</div>}
     </article>;
-  })}</div>;
+  })}{viewer && <MediaViewer attachment={viewer} onClose={() => setViewer(null)} />}</div>;
+}
+
+function MessageAttachments({ attachments, onOpen }: { attachments: Attachment[]; onOpen: (attachment: Attachment) => void }) {
+  const images = attachments.filter((item) => item.mimeType.startsWith('image/'));
+  const videos = attachments.filter((item) => item.mimeType.startsWith('video/'));
+  const audio = attachments.filter((item) => item.mimeType.startsWith('audio/'));
+  const files = attachments.filter((item) => !item.mimeType.startsWith('image/') && !item.mimeType.startsWith('video/') && !item.mimeType.startsWith('audio/'));
+  const visibleImages = images.slice(0, 4);
+  if (attachments.length === 0) return null;
+  return <div className="message-attachments">
+    {images.length > 0 && <div className={`media-grid media-grid-${Math.min(images.length, 4)}`}>
+      {visibleImages.map((attachment, index) => <button type="button" className="media-tile" key={attachment.id} onClick={() => onOpen(attachment)} aria-label={`View ${attachment.name}`}>
+        <img src={attachment.url} alt={attachment.name} loading="lazy" />
+        {index === 3 && images.length > 4 && <span className="media-more">+{images.length - 4}</span>}
+      </button>)}
+    </div>}
+    {videos.map((attachment) => <button type="button" className="video-card" key={attachment.id} onClick={() => onOpen(attachment)} aria-label={`Play ${attachment.name}`}>
+      <video src={attachment.url} preload="metadata" muted />
+      <span className="video-play"><Play fill="currentColor" /></span>
+      <span className="video-name">{attachment.name}</span>
+    </button>)}
+    {audio.map((attachment) => <VoicePlayer key={attachment.id} src={attachment.url} />)}
+    {files.map((attachment) => <a className="file-card" href={attachment.url} target="_blank" rel="noreferrer" key={attachment.id}>
+      <span className="file-icon">{attachment.mimeType === 'application/pdf' ? <FileType /> : <FileText />}</span>
+      <span className="file-copy"><strong>{attachment.name}</strong><small>{fileTypeLabel(attachment)} · {formatSize(attachment.size)}</small></span>
+      <ArrowDown />
+    </a>)}
+  </div>;
+}
+
+function VoicePlayer({ src, compact = false }: { src: string; compact?: boolean }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [position, setPosition] = useState(0);
+  const shownTime = playing || position > 0 ? position : duration;
+  return <div className={`voice-player${compact ? ' compact' : ''}`}>
+    <audio ref={audioRef} src={src} preload="metadata" onLoadedMetadata={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)} onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)} onEnded={() => { setPlaying(false); setPosition(0); }} />
+    <button type="button" aria-label={playing ? 'Pause voice message' : 'Play voice message'} onClick={() => { const audio = audioRef.current; if (!audio) return; if (playing) audio.pause(); else void audio.play(); setPlaying(!playing); }}>{playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}</button>
+    <input aria-label="Voice message progress" type="range" min="0" max={duration || 1} step="0.01" value={Math.min(position, duration || 1)} onChange={(event) => { const next = Number(event.target.value); if (audioRef.current) audioRef.current.currentTime = next; setPosition(next); }} />
+    <time>{formatDuration(shownTime)}</time>
+  </div>;
+}
+
+function MediaViewer({ attachment, onClose }: { attachment: Attachment; onClose: () => void }) {
+  const video = attachment.mimeType.startsWith('video/');
+  return <div className="media-viewer" role="dialog" aria-modal="true" aria-label={attachment.name} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="media-viewer-bar"><span>{attachment.name}</span><IconButton label="Close viewer" onClick={onClose}><X /></IconButton></div>
+    <div className="media-viewer-content">{video ? <video src={attachment.url} controls autoPlay playsInline /> : <img src={attachment.url} alt={attachment.name} />}</div>
+  </div>;
 }
 
 function Composer({ conversationId, currentUser, replyTo, editing, clearContext, onMessage, onEdit, socketSend, onError }: { conversationId: string; currentUser: User; replyTo: Message | null; editing: Message | null; clearContext: () => void; onMessage: (message: Message) => void; onEdit: (message: Message) => void; socketSend: (event: object) => void; onError: (error: string) => void }) {
@@ -374,8 +519,16 @@ function Composer({ conversationId, currentUser, replyTo, editing, clearContext,
   const [uploading, setUploading] = useState(false);
   const typingTimer = useRef<number | undefined>(undefined);
   const fileRef = useRef<HTMLInputElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recorderStreamRef = useRef<MediaStream | null>(null);
+  const recorderChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<number | undefined>(undefined);
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [voicePreview, setVoicePreview] = useState<{ file: File; url: string } | null>(null);
 
   useEffect(() => { setBody(editing?.body ?? ''); }, [editing]);
+  useEffect(() => () => { window.clearInterval(recordingTimerRef.current); recorderStreamRef.current?.getTracks().forEach((track) => track.stop()); if (voicePreview) URL.revokeObjectURL(voicePreview.url); }, [voicePreview]);
 
   function updateBody(value: string) {
     setBody(value);
@@ -387,7 +540,7 @@ function Composer({ conversationId, currentUser, replyTo, editing, clearContext,
   async function uploadFile(file?: File) {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { onError('Attachments must be 5 MB or smaller'); return; }
-    const allowed = ['image/', 'application/pdf', 'text/plain'];
+    const allowed = ['image/', 'audio/', 'application/pdf', 'text/plain'];
     if (!allowed.some((type) => file.type.startsWith(type))) { onError('This file type is not supported'); return; }
     setUploading(true);
     try {
@@ -396,6 +549,53 @@ function Composer({ conversationId, currentUser, replyTo, editing, clearContext,
     }
     catch (reason) { onError(reason instanceof Error ? reason.message : 'Upload failed'); }
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
+  }
+
+  async function startRecording() {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') { onError('Voice recording is not supported by this browser'); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, preferred ? { mimeType: preferred } : undefined);
+      recorderRef.current = recorder; recorderStreamRef.current = stream; recorderChunksRef.current = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) recorderChunksRef.current.push(event.data); };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop()); recorderStreamRef.current = null;
+        const type = recorder.mimeType || 'audio/webm';
+        const blob = new Blob(recorderChunksRef.current, { type });
+        if (blob.size) {
+          const extension = type.includes('ogg') ? 'ogg' : 'webm';
+          const file = new File([blob], `voice-${Date.now()}.${extension}`, { type });
+          setVoicePreview((current) => { if (current) URL.revokeObjectURL(current.url); return { file, url: URL.createObjectURL(blob) }; });
+        }
+      };
+      recorder.start(); setRecording(true); setRecordingSeconds(0);
+      recordingTimerRef.current = window.setInterval(() => setRecordingSeconds((value) => value + 1), 1000);
+    } catch (reason) { onError(reason instanceof Error ? reason.message : 'Microphone access failed'); }
+  }
+
+  function stopRecording(cancel = false) {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state === 'inactive') return;
+    if (cancel) recorder.onstop = () => recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recorder.stop(); recorderRef.current = null; setRecording(false); window.clearInterval(recordingTimerRef.current);
+    if (cancel) { recorderChunksRef.current = []; setRecordingSeconds(0); }
+  }
+
+  function cancelPreview() {
+    setVoicePreview((current) => { if (current) URL.revokeObjectURL(current.url); return null; });
+    setRecordingSeconds(0);
+  }
+
+  async function sendVoice() {
+    if (!voicePreview || sending) return;
+    setSending(true);
+    try {
+      const attachment = await api.upload(voicePreview.file);
+      onMessage(await api.sendMessage(conversationId, '', replyTo?.id, [attachment.id]));
+      cancelPreview(); clearContext();
+    } catch (reason) { onError(reason instanceof Error ? reason.message : 'Voice message could not be sent'); }
+    finally { setSending(false); }
   }
 
   async function submit(event: FormEvent) {
@@ -418,10 +618,13 @@ function Composer({ conversationId, currentUser, replyTo, editing, clearContext,
   return <div className="composer-wrap">
     {(replyTo || editing) && <div className="composer-context"><span>{editing ? <Pencil /> : <Reply />}<span><strong>{editing ? 'Editing message' : `Replying to ${replyTo?.sender.displayName}`}</strong><small>{editing?.body ?? replyTo?.body}</small></span></span><IconButton label="Cancel" onClick={clearContext}><X /></IconButton></div>}
     {attachments.length > 0 && <div className="pending-attachments">{attachments.map((attachment) => <span key={attachment.id}><FileText />{attachment.name}<button aria-label={`Remove ${attachment.name}`} onClick={() => setAttachments((items) => items.filter((item) => item.id !== attachment.id))}><X /></button></span>)}</div>}
+    {recording && <div className="voice-recording"><span><i />Recording</span><time>{formatDuration(recordingSeconds)}</time><button type="button" onClick={() => stopRecording(true)}>Cancel</button><button type="button" className="voice-stop" onClick={() => stopRecording()}>Stop</button></div>}
+    {voicePreview && <div className="voice-preview"><span>Preview</span><VoicePlayer src={voicePreview.url} compact /><button type="button" onClick={cancelPreview}>Cancel</button><button type="button" className="voice-send" disabled={sending} onClick={() => void sendVoice()}>{sending ? 'Sending…' : 'Send'}</button></div>}
     <form className="composer" onSubmit={submit}>
       <input ref={fileRef} hidden type="file" onChange={(event) => void uploadFile(event.target.files?.[0])} accept="image/*,.pdf,.txt" />
       <IconButton label="Add attachment" disabled={uploading} onClick={() => fileRef.current?.click()}><Paperclip /></IconButton>
       <label><span className="sr-only">Message</span><textarea rows={1} value={body} onChange={(event) => updateBody(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Message" /></label>
+      {!editing && !voicePreview && <IconButton label={recording ? 'Stop recording' : 'Record voice message'} disabled={sending} onClick={() => recording ? stopRecording() : void startRecording()}><Mic /></IconButton>}
       <button className="send-button" aria-label={editing ? 'Save edit' : 'Send message'} disabled={sending || (!body.trim() && attachments.length === 0)}>{editing ? <Check /> : <Send />}</button>
     </form>
   </div>;
@@ -830,6 +1033,18 @@ function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDuration(value: number) {
+  const seconds = Math.max(0, Math.floor(Number.isFinite(value) ? value : 0));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function fileTypeLabel(attachment: Attachment) {
+  if (attachment.mimeType === 'application/pdf') return 'PDF document';
+  if (attachment.mimeType === 'text/plain') return 'Text document';
+  const extension = attachment.name.split('.').pop();
+  return extension && extension !== attachment.name ? `${extension.toUpperCase()} file` : 'Document';
 }
 
 export default App;

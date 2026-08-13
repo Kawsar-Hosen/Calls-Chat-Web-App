@@ -73,6 +73,16 @@ function mapReactions(raw: unknown, currentUserId?: string) {
   return [...grouped].map(([emoji, userIds]) => ({ emoji, userIds, count: userIds.length, reacted: currentUserId ? userIds.includes(currentUserId) : false }));
 }
 
+function mapAttachment(raw: Json): Attachment {
+  return {
+    id: String(raw.id),
+    name: String(raw.name ?? 'Attachment'),
+    url: resolveAssetUrl(String(raw.url ?? '')) ?? '',
+    mimeType: String(raw.mimeType ?? raw.mime_type ?? 'application/octet-stream'),
+    size: Number(raw.size ?? 0),
+  };
+}
+
 function mapMessage(raw: Json, currentUserId?: string): Message {
   const senderId = String(raw.senderId ?? raw.sender_id ?? (raw.sender as Json | undefined)?.id ?? '');
   const senderRaw = raw.sender as Json | undefined;
@@ -87,7 +97,7 @@ function mapMessage(raw: Json, currentUserId?: string): Message {
     deletedAt: (raw.deletedAt ?? raw.deleted_at ?? null) as string | null,
     replyTo: null,
     reactions: mapReactions(raw.reactions, currentUserId),
-    attachments: (raw.attachments ?? []) as Attachment[],
+    attachments: ((raw.attachments ?? []) as Json[]).map(mapAttachment),
     delivery: senderId === currentUserId ? 'sent' : 'delivered',
   };
 }
@@ -334,6 +344,6 @@ export const api = {
   upload: async (file: File): Promise<Attachment> => {
     const form = new FormData();
     form.append('file', file);
-    return request<Attachment>('/media/upload', { method: 'POST', body: form });
+    return mapAttachment(await request<Json>('/media/upload', { method: 'POST', body: form }));
   },
 };

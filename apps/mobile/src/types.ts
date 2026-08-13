@@ -81,6 +81,15 @@ export interface Message {
   createdAt: string;
   editedAt: string | null;
   deletedAt: string | null;
+  attachments: Attachment[];
+}
+
+export interface Attachment {
+  id: string;
+  name: string;
+  url: string;
+  mimeType: string;
+  size: number;
 }
 
 export interface Tokens {

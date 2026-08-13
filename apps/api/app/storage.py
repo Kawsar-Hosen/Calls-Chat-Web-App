@@ -10,6 +10,8 @@ from app.config import settings
 ALLOWED_FILES = {
     "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif",
     "application/pdf": ".pdf", "text/plain": ".txt",
+    "audio/webm": ".webm", "audio/ogg": ".ogg", "audio/mp4": ".m4a", "audio/mpeg": ".mp3",
+    "audio/aac": ".aac", "audio/x-m4a": ".m4a", "audio/3gpp": ".3gp",
 }
 
 AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp"}
