@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
+import { useI18n } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Group } from '@/types';
 import { SkeletonList } from '@/ui';
 
 export default function AddGroupScreen() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Group[]>([]);
@@ -22,48 +24,48 @@ export default function AddGroupScreen() {
     const timer = setTimeout(() => {
       api.searchGroups(query.trim())
         .then(setResults)
-        .catch((reason) => setError(reason instanceof Error ? reason.message : 'Search failed'))
+        .catch((reason) => setError(reason instanceof Error ? reason.message : t('searchFailed')))
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, t]);
 
   const join = async (group: Group) => {
     try {
       await api.applyToGroup(group.id);
       setResults((items) => items.map((item) => item.id === group.id ? { ...item, myRole: item.myRole } : item));
-      setError('Application sent. An admin will review your request.');
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not apply'); }
+      setError(t('applicationSent'));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('couldNotApply')); }
   };
 
   return (
     <SafeAreaView edges={['top']} style={[styles.safe, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <Pressable accessibilityLabel="Back" hitSlop={10} onPress={() => router.back()} style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.5 : 1 }]}><MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} /></Pressable>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Add Group</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>{t('addGroup')}</Text>
       </View>
       <View style={[styles.search, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <MaterialCommunityIcons name="magnify" size={19} color={colors.muted} />
-        <TextInput autoFocus value={query} onChangeText={setQuery} placeholder="Enter group name" placeholderTextColor={colors.faint} style={[styles.searchInput, { color: colors.text }]} />
+        <TextInput autoFocus value={query} onChangeText={setQuery} placeholder={t('enterGroupName')} placeholderTextColor={colors.faint} style={[styles.searchInput, { color: colors.text }]} />
         {query ? <Pressable hitSlop={8} onPress={() => setQuery('')}><MaterialCommunityIcons name="close-circle" size={18} color={colors.faint} /></Pressable> : null}
       </View>
       <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
-        {error ? <Text style={[styles.error, { color: error.includes('Application') ? colors.success : colors.danger }]}>{error}</Text> : null}
+        {error ? <Text style={[styles.error, { color: error.includes('Application') || error.includes('পাঠানো') || error.includes('terkirim') || error.includes('भेजा') || error.includes('تم إرسال') || error.includes('enviada') || error.includes('enviado') ? colors.success : colors.danger }]}>{error}</Text> : null}
         {loading ? <SkeletonList rows={5} /> : null}
-        {!loading && query.trim().length < 2 ? <Text style={[styles.hint, { color: colors.muted }]}>Enter at least two characters to search for groups.</Text> : null}
-        {!loading && query.trim().length >= 2 && results.length === 0 ? <Text style={[styles.hint, { color: colors.muted }]}>No groups found. Try a different name.</Text> : null}
+        {!loading && query.trim().length < 2 ? <Text style={[styles.hint, { color: colors.muted }]}>{t('searchGroupsHint')}</Text> : null}
+        {!loading && query.trim().length >= 2 && results.length === 0 ? <Text style={[styles.hint, { color: colors.muted }]}>{t('noGroupsFound')}</Text> : null}
         {results.map((group) => (
           <View key={group.id} style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[styles.groupAvatar, { backgroundColor: colors.accentSoft }]}><MaterialCommunityIcons name="account-group-outline" size={20} color={colors.accent} /></View>
             <View style={styles.rowCopy}>
               <Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>{group.name}</Text>
-              <Text numberOfLines={1} style={[styles.handle, { color: colors.muted }]}>{group.memberCount} members</Text>
+              <Text numberOfLines={1} style={[styles.handle, { color: colors.muted }]}>{group.memberCount} {t('members')}</Text>
               {group.description ? <Text numberOfLines={2} style={[styles.desc, { color: colors.faint }]}>{group.description}</Text> : null}
             </View>
             {group.myRole !== 'member' ? (
-              <Pressable onPress={() => void join(group)} style={({ pressed }) => [styles.joinBtn, { backgroundColor: colors.accent, opacity: pressed ? 0.75 : 1 }]}><Text style={{ color: colors.accentText, fontSize: 12, fontWeight: '800' }}>Join</Text></Pressable>
+              <Pressable onPress={() => void join(group)} style={({ pressed }) => [styles.joinBtn, { backgroundColor: colors.accent, opacity: pressed ? 0.75 : 1 }]}><Text style={{ color: colors.accentText, fontSize: 12, fontWeight: '800' }}>{t('join')}</Text></Pressable>
             ) : (
-              <View style={[styles.relation, { backgroundColor: colors.accentSoft }]}><Text style={{ color: colors.accent, fontSize: 11, fontWeight: '800' }}>Member</Text></View>
+              <View style={[styles.relation, { backgroundColor: colors.accentSoft }]}><Text style={{ color: colors.accent, fontSize: 11, fontWeight: '800' }}>{t('member')}</Text></View>
             )}
           </View>
         ))}

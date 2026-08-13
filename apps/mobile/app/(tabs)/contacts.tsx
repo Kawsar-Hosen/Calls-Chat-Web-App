@@ -31,7 +31,7 @@ export default function ContactsScreen() {
     try {
       const [friendRows, requestRows, groupRows] = await Promise.all([api.friends(), api.friendRequests(user.id), api.myGroups()]);
       setFriends(friendRows); setRequests(requestRows); setGroups(groupRows);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to load contacts'); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('unableLoadContacts')); }
     finally { setLoading(false); setRefreshing(false); }
   }, [user]);
 
@@ -48,7 +48,7 @@ export default function ContactsScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={[styles.safe, { backgroundColor: colors.background }]}>
-      <ScreenHeader title={t('contacts')} eyebrow="YOUR NETWORK" right={<View style={[styles.count, { backgroundColor: colors.surface, borderColor: colors.border }]}><Text style={[styles.countText, { color: colors.muted }]}>{friends.length} friends</Text></View>} />
+      <ScreenHeader title={t('contacts')} eyebrow={t('yourNetwork')} right={<View style={[styles.count, { backgroundColor: colors.surface, borderColor: colors.border }]}><Text style={[styles.countText, { color: colors.muted }]}>{friends.length} {t('friendsLabel')}</Text></View>} />
       {loading ? <SkeletonList rows={8} /> : (
         <FlatList
           data={['__services__', ...friends, '__groups__'] as string[]}
@@ -56,17 +56,17 @@ export default function ContactsScreen() {
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent} onRefresh={() => { setRefreshing(true); void load(true); }} />}
           ListHeaderComponent={<>
-            <Pressable onPress={() => router.push('/contacts/search')} style={({ pressed }) => [styles.entry, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}><View style={[styles.entryMark, { backgroundColor: colors.elevated }]}><MaterialCommunityIcons name="magnify" size={19} color={colors.text} /></View><Text style={[styles.entryText, { color: colors.text }]}>Search people</Text><MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} /></Pressable>
-            <Pressable onPress={() => router.push('/contacts/requests')} style={({ pressed }) => [styles.entry, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}><View style={[styles.entryMark, { backgroundColor: colors.accentSoft }]}><MaterialCommunityIcons name="account-plus-outline" size={19} color={colors.accent} /></View><Text style={[styles.entryText, { color: colors.text }]}>New Friends</Text>{requests.length > 0 ? <View style={[styles.badge, { backgroundColor: colors.accent }]}><Text style={[styles.badgeText, { color: colors.accentText }]}>{requests.length > 9 ? '9+' : requests.length}</Text></View> : null}<MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} /></Pressable>
-            <Pressable onPress={() => router.push('/contacts/groups')} style={({ pressed }) => [styles.entry, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}><View style={[styles.entryMark, { backgroundColor: colors.elevated }]}><MaterialCommunityIcons name="account-group-outline" size={19} color={colors.text} /></View><Text style={[styles.entryText, { color: colors.text }]}>My Groups</Text>{groups.length > 0 ? <View style={[styles.badge, { backgroundColor: colors.accent }]}><Text style={[styles.badgeText, { color: colors.accentText }]}>{groups.length > 9 ? '9+' : groups.length}</Text></View> : null}<MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} /></Pressable>
-            <Pressable onPress={() => router.push('/contacts/add-group')} style={({ pressed }) => [styles.entry, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}><View style={[styles.entryMark, { backgroundColor: colors.elevated }]}><MaterialCommunityIcons name="account-search-outline" size={19} color={colors.text} /></View><Text style={[styles.entryText, { color: colors.text }]}>Add Group</Text><MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} /></Pressable>
-            <Pressable onPress={() => router.push('/contacts/blacklist')} style={({ pressed }) => [styles.entry, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}><View style={[styles.entryMark, { backgroundColor: colors.elevated }]}><MaterialCommunityIcons name="account-off-outline" size={19} color={colors.text} /></View><Text style={[styles.entryText, { color: colors.text }]}>Blacklist</Text><MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} /></Pressable>
+            <Pressable onPress={() => router.push('/contacts/search')} style={({ pressed }) => [styles.entry, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}><View style={[styles.entryMark, { backgroundColor: colors.elevated }]}><MaterialCommunityIcons name="magnify" size={19} color={colors.text} /></View><Text style={[styles.entryText, { color: colors.text }]}>{t('searchPeople')}</Text><MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} /></Pressable>
+            <Pressable onPress={() => router.push('/contacts/requests')} style={({ pressed }) => [styles.entry, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}><View style={[styles.entryMark, { backgroundColor: colors.accentSoft }]}><MaterialCommunityIcons name="account-plus-outline" size={19} color={colors.accent} /></View><Text style={[styles.entryText, { color: colors.text }]}>{t('newFriends')}</Text>{requests.length > 0 ? <View style={[styles.badge, { backgroundColor: colors.accent }]}><Text style={[styles.badgeText, { color: colors.accentText }]}>{requests.length > 9 ? '9+' : requests.length}</Text></View> : null}<MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} /></Pressable>
+            <Pressable onPress={() => router.push('/contacts/groups')} style={({ pressed }) => [styles.entry, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}><View style={[styles.entryMark, { backgroundColor: colors.elevated }]}><MaterialCommunityIcons name="account-group-outline" size={19} color={colors.text} /></View><Text style={[styles.entryText, { color: colors.text }]}>{t('myGroups')}</Text>{groups.length > 0 ? <View style={[styles.badge, { backgroundColor: colors.accent }]}><Text style={[styles.badgeText, { color: colors.accentText }]}>{groups.length > 9 ? '9+' : groups.length}</Text></View> : null}<MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} /></Pressable>
+            <Pressable onPress={() => router.push('/contacts/add-group')} style={({ pressed }) => [styles.entry, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}><View style={[styles.entryMark, { backgroundColor: colors.elevated }]}><MaterialCommunityIcons name="account-search-outline" size={19} color={colors.text} /></View><Text style={[styles.entryText, { color: colors.text }]}>{t('addGroup')}</Text><MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} /></Pressable>
+            <Pressable onPress={() => router.push('/contacts/blacklist')} style={({ pressed }) => [styles.entry, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}><View style={[styles.entryMark, { backgroundColor: colors.elevated }]}><MaterialCommunityIcons name="account-off-outline" size={19} color={colors.text} /></View><Text style={[styles.entryText, { color: colors.text }]}>{t('blacklist')}</Text><MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} /></Pressable>
             {error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
           </>}
           renderItem={({ item }) => {
             if (item === '__services__') return null;
             if (item === '__groups__') return (
-              <Text style={[styles.sectionLabel, { color: colors.muted }]}>GROUPS · {groups.length}</Text>
+              <Text style={[styles.sectionLabel, { color: colors.muted }]}>{t('groupsLabel')} · {groups.length}</Text>
             );
             const friend = friends.find((f) => f.id === item);
             if (!friend) return null;
@@ -80,7 +80,7 @@ export default function ContactsScreen() {
           }}
           ListFooterComponent={groups.length ? <View style={styles.groupsSection}>{groups.map((group) => <Pressable key={group.id} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })} style={({ pressed }) => [styles.friendRow, { backgroundColor: pressed ? colors.elevated : colors.surface, borderBottomColor: colors.border }]}>
             <View style={[styles.groupAvatar, { backgroundColor: colors.accentSoft }]}><MaterialCommunityIcons name="account-group-outline" size={20} color={colors.accent} /></View>
-            <View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.friendName, { color: colors.text }]}>{group.name}</Text><Text numberOfLines={1} style={[styles.friendHandle, { color: colors.muted }]}>{group.memberCount} members · you are {group.myRole}</Text></View>
+            <View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.friendName, { color: colors.text }]}>{group.name}</Text><Text numberOfLines={1} style={[styles.friendHandle, { color: colors.muted }]}>{group.memberCount} {t('members')} · {t('youAre')} {group.myRole}</Text></View>
             <MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} />
           </Pressable>)}</View> : null}
         />

@@ -1,7 +1,23 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as SecureStore from 'expo-secure-store';
 import { Image } from 'react-native';
-import type { Attachment, AuthResult, Conversation, FriendRequest, Group, GroupApplication, GroupMember, GroupRole, GroupSummary, Message, Tokens, User, UserSearchResult } from './types';
+import type { Attachment, AuthResult, Conversation, FriendRequest, Group, GroupApplication, GroupCustomization, GroupMember, GroupRole, GroupSettings, GroupSummary, Message, Tokens, User, UserSearchResult } from './types';
+
+const DEFAULT_CUSTOMIZATION: GroupCustomization = { theme: 'default', font: 'default', wallpaper: 'plain', bubble: 'rounded', density: 'comfortable', radius: 8 };
+
+function mapGroupCustomization(raw: Json | null | undefined): GroupCustomization {
+  const value = raw ?? {};
+  const str = (key: string, fallback: string) => (typeof value[key] === 'string' && String(value[key]) ? String(value[key]) : fallback);
+  const num = (key: string, fallback: number) => (typeof value[key] === 'number' ? Number(value[key]) : fallback);
+  return {
+    theme: str('theme', DEFAULT_CUSTOMIZATION.theme),
+    font: str('font', DEFAULT_CUSTOMIZATION.font),
+    wallpaper: str('wallpaper', DEFAULT_CUSTOMIZATION.wallpaper),
+    bubble: str('bubble', DEFAULT_CUSTOMIZATION.bubble),
+    density: str('density', DEFAULT_CUSTOMIZATION.density),
+    radius: num('radius', DEFAULT_CUSTOMIZATION.radius),
+  };
+}
 
 type Json = Record<string, unknown>;
 const TOKEN_KEY = 'xyteee.session';
@@ -20,6 +36,8 @@ function mapUser(raw: Json): User {
     avatarUrl: avatar && avatar.startsWith('/') ? `${API_ORIGIN}${avatar}` : avatar,
     isOnline: raw.is_online === true,
     lastSeenAt: raw.last_seen_at ? String(raw.last_seen_at) : null,
+    ...(raw.phone_code ? { phoneCode: String(raw.phone_code) } : {}),
+    ...(raw.phone ? { phone: String(raw.phone) } : {}),
     ...(raw.remark != null ? { remark: String(raw.remark) } : {}),
   };
 }
@@ -28,7 +46,18 @@ function mapGroupMember(raw: Json): GroupMember {
   return { user: mapUser((raw.user ?? {}) as Json), role: String(raw.role ?? 'member') as GroupRole, joinedAt: String(raw.joined_at ?? '') };
 }
 
-function mapGroup(raw: Json): Group {
+function mapGroupSettings(raw: Json | null | undefined): GroupSettings {
+  const value = raw ?? {};
+  const pick = (key: string, fallback: 'everyone' | 'admins'): 'everyone' | 'admins' => (value[key] === 'admins' ? 'admins' : value[key] === 'everyone' ? 'everyone' : fallback);
+  return {
+    canSend: pick('can_send', 'everyone'),
+    canSendMedia: pick('can_send_media', 'everyone'),
+    canAddMembers: pick('can_add_members', 'admins'),
+    canEditInfo: pick('can_edit_info', 'admins'),
+  };
+}
+
+export function mapGroup(raw: Json): Group {
   return {
     id: String(raw.id),
     name: String(raw.name),
@@ -40,6 +69,8 @@ function mapGroup(raw: Json): Group {
     myRole: String(raw.my_role ?? 'member') as GroupRole,
     members: ((raw.members ?? []) as Json[]).map(mapGroupMember),
     updatedAt: String(raw.updated_at ?? ''),
+    settings: mapGroupSettings(raw.settings as Json | null | undefined),
+    customization: mapGroupCustomization(raw.customization as Json | null | undefined),
   };
 }
 
@@ -70,10 +101,13 @@ export function mapMessage(raw: Json): Message {
     conversationId: String(raw.conversation_id),
     senderId: String(raw.sender_id),
     content: String(raw.content ?? ''),
+    replyToId: raw.reply_to_id ? String(raw.reply_to_id) : null,
+    reactions: ((raw.reactions ?? []) as Json[]).map((reaction) => ({ emoji: String(reaction.emoji), userId: String(reaction.user_id) })),
     createdAt: String(raw.created_at),
     editedAt: raw.edited_at ? String(raw.edited_at) : null,
     deletedAt: raw.deleted_at ? String(raw.deleted_at) : null,
     attachments: ((raw.attachments ?? []) as Json[]).map(mapAttachment),
+    readByCount: Number(raw.read_by_count ?? 0),
   };
 }
 
@@ -204,11 +238,15 @@ export const api = {
       await clearTokens();
     }
   },
-  async updateProfile(data: { displayName: string; username: string; bio: string; avatarUrl?: string | null }) {
-    return mapUser(await request<Json>('/profile', {
-      method: 'PATCH',
-      body: JSON.stringify({ display_name: data.displayName, username: data.username, bio: data.bio || null, ...(data.avatarUrl !== undefined ? { avatar_url: data.avatarUrl } : {}) }),
-    }));
+  async updateProfile(data: { displayName?: string; username?: string; bio?: string; avatarUrl?: string | null; email?: string; phoneCode?: string | null; phone?: string | null }) {
+    const body: Record<string, unknown> = {};
+    if (data.displayName !== undefined) body.display_name = data.displayName;
+    if (data.username !== undefined) body.username = data.username;
+    if (data.bio !== undefined) body.bio = data.bio || null;
+    if (data.avatarUrl !== undefined) body.avatar_url = data.avatarUrl;
+    if (data.email !== undefined) body.email = data.email;
+    if (data.phoneCode !== undefined || data.phone !== undefined) { body.phone_code = data.phoneCode ?? null; body.phone = data.phone ?? null; }
+    return mapUser(await request<Json>('/profile', { method: 'PATCH', body: JSON.stringify(body) }));
   },
   async uploadAvatar(uri: string, onProgress?: (pct: number) => void): Promise<User> {
     const form = new FormData();
@@ -259,6 +297,7 @@ export const api = {
       members: ((row.members ?? []) as Json[]).map(mapUser),
       unreadCount: Number(row.unread_count ?? 0),
       updatedAt: String(row.updated_at),
+      ...(row.last_message ? { lastMessage: mapMessage(row.last_message as Json) } : {}),
     }));
   },
   async createConversation(userId: string): Promise<Conversation> {
@@ -271,6 +310,7 @@ export const api = {
       members: ((row.members ?? []) as Json[]).map(mapUser),
       unreadCount: Number(row.unread_count ?? 0),
       updatedAt: String(row.updated_at),
+      ...(row.last_message ? { lastMessage: mapMessage(row.last_message as Json) } : {}),
     };
   },
   async messages(conversationId: string): Promise<{ items: Message[]; nextCursor: string | null }> {
@@ -291,18 +331,37 @@ export const api = {
   async saveGiphy(item: { id: string; kind: 'gif' | 'sticker'; title: string; url: string }): Promise<Attachment> {
     return mapAttachment(await request<Json>('/media/giphy', { method: 'POST', body: JSON.stringify(item) }));
   },
-  async sendMessage(conversationId: string, content: string, attachmentIds: string[] = []) {
+  async sendMessage(conversationId: string, content: string, attachmentIds: string[] = [], replyToId: string | null = null) {
     return mapMessage(await request<Json>(`/conversations/${conversationId}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ content, attachment_ids: attachmentIds }),
+      body: JSON.stringify({ content, attachment_ids: attachmentIds, reply_to_id: replyToId }),
     }));
   },
+  async toggleReaction(messageId: string, emoji: string) {
+    return mapMessage(await request<Json>(`/messages/${messageId}/reactions`, {
+      method: 'POST',
+      body: JSON.stringify({ emoji }),
+    }));
+  },
+  async editMessage(messageId: string, content: string) {
+    return mapMessage(await request<Json>(`/messages/${messageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content }),
+    }));
+  },
+  async deleteMessage(messageId: string) {
+    return mapMessage(await request<Json>(`/messages/${messageId}`, { method: 'DELETE' }));
+  },
+  markRead: (conversationId: string, messageId: string) => request<void>(`/conversations/${conversationId}/read`, {
+    method: 'POST',
+    body: JSON.stringify({ message_id: messageId }),
+  }),
   registerDevice: (pushToken: string, platform: 'ios' | 'android') => request<void>('/devices', {
     method: 'POST',
     body: JSON.stringify({ push_token: pushToken, platform }),
   }),
-  async searchUsers(query: string): Promise<UserSearchResult[]> {
-    return extractItems(await request<unknown>(`/users/search?q=${encodeURIComponent(query)}`)).map((raw) => {
+  async searchUsers(query: string, field: 'username' | 'email' | 'number' = 'username'): Promise<UserSearchResult[]> {
+    return extractItems(await request<unknown>(`/users/search?q=${encodeURIComponent(query)}&field=${field}`)).map((raw) => {
       const user = mapUser(raw);
       return {
         ...user,
@@ -311,6 +370,20 @@ export const api = {
         isBlocked: raw.is_blocked === true,
       };
     });
+  },
+  async getUser(userId: string): Promise<UserSearchResult> {
+    const raw = await request<Json>(`/users/${userId}`);
+    const user = mapUser(raw);
+    return {
+      ...user,
+      isFriend: raw.is_friend === true,
+      requestStatus: raw.request_status ? String(raw.request_status) as 'outgoing' | 'incoming' : null,
+      isBlocked: raw.is_blocked === true,
+    };
+  },
+  async startDirectChat(userId: string): Promise<string> {
+    const conversation = await this.createConversation(userId);
+    return conversation.id;
   },
   async sendFriendRequest(userId: string) {
     await request<void>('/friends/requests', { method: 'POST', body: JSON.stringify({ user_id: userId }) });
@@ -323,6 +396,9 @@ export const api = {
       const user = mapUser(await request<Json>(`/users/${userId}/presence`));
       return { id: String(row.id), user, direction, createdAt: String(row.created_at ?? '') };
     }));
+  },
+  async presence(userId: string): Promise<User> {
+    return mapUser(await request<Json>(`/users/${userId}/presence`));
   },
   async friends(): Promise<User[]> {
     return extractItems(await request<unknown>('/friends')).map(mapUser);
@@ -360,8 +436,24 @@ export const api = {
   async group(groupId: string): Promise<Group> {
     return mapGroup(await request<Json>(`/groups/${groupId}`));
   },
-  async updateGroup(groupId: string, patch: { name?: string; description?: string }) {
-    return mapGroup(await request<Json>(`/groups/${groupId}`, { method: 'PATCH', body: JSON.stringify({ name: patch.name, description: patch.description }) }));
+  async updateGroup(groupId: string, patch: { name?: string; description?: string | null; avatarUrl?: string | null; settings?: Partial<GroupSettings>; customization?: GroupCustomization | null }) {
+    return mapGroup(await request<Json>(`/groups/${groupId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.description !== undefined ? { description: patch.description || null } : {}),
+        ...(patch.avatarUrl !== undefined ? { avatar_url: patch.avatarUrl } : {}),
+        ...(patch.settings ? {
+          settings: {
+            can_send: patch.settings.canSend,
+            can_send_media: patch.settings.canSendMedia,
+            can_add_members: patch.settings.canAddMembers,
+            can_edit_info: patch.settings.canEditInfo,
+          },
+        } : {}),
+        ...(patch.customization !== undefined ? { customization: patch.customization } : {}),
+      }),
+    }));
   },
   async addGroupMembers(groupId: string, userIds: string[]): Promise<Group> {
     return mapGroup(await request<Json>(`/groups/${groupId}/members`, { method: 'POST', body: JSON.stringify({ user_ids: userIds }) }));

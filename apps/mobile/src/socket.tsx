@@ -8,6 +8,7 @@ type Listener = (event: SocketEvent) => void;
 interface SocketContextValue {
   connected: boolean;
   subscribe: (listener: Listener) => () => void;
+  send: (payload: Record<string, unknown>) => void;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -16,6 +17,7 @@ export function SocketProvider({ children }: PropsWithChildren) {
   const { user } = useAuth();
   const [connected, setConnected] = useState(false);
   const listeners = useRef(new Set<Listener>());
+  const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -31,6 +33,7 @@ export function SocketProvider({ children }: PropsWithChildren) {
       const tokens = await getTokens();
       if (!tokens || disposed) return;
       socket = new WebSocket(`${WS_URL}?token=${encodeURIComponent(tokens.accessToken)}`);
+      socketRef.current = socket;
       socket.onopen = () => {
         attempt = 0;
         setConnected(true);
@@ -41,11 +44,15 @@ export function SocketProvider({ children }: PropsWithChildren) {
         try {
           const raw = JSON.parse(String(event.data)) as Record<string, unknown>;
           const type = String(raw.type);
-          if (type === 'message.created' || type === 'message.updated' || type === 'message.deleted') {
-            emit({ type, message: mapMessage(raw.message as Record<string, unknown>) });
+          if (type === 'message.created' || type === 'message.updated' || type === 'message.deleted' || type === 'reaction.updated') {
+            emit({ type: type === 'reaction.updated' ? 'message.updated' : type, message: mapMessage(raw.message as Record<string, unknown>) });
           } else if (type === 'presence.updated') {
             emit({ type, userId: String(raw.user_id), isOnline: raw.is_online === true, lastSeenAt: raw.last_seen_at ? String(raw.last_seen_at) : null });
-          } else if (type === 'group.updated' || type === 'group.deleted') {
+          } else if (type === 'typing.start' || type === 'typing.stop') {
+            emit({ type, conversationId: String(raw.conversation_id), userId: String(raw.user_id) });
+          } else if (type === 'group.updated') {
+            emit({ type, groupId: String(raw.group_id), group: raw.group ?? undefined });
+          } else if (type === 'group.deleted') {
             emit({ type, groupId: String(raw.group_id) });
           } else if (type === 'group.member.removed' || type === 'group.member.added') {
             emit({ type, groupId: String(raw.group_id), userId: String(raw.user_id) });
@@ -56,6 +63,7 @@ export function SocketProvider({ children }: PropsWithChildren) {
       };
       socket.onerror = () => socket?.close();
       socket.onclose = () => {
+        if (socketRef.current === socket) socketRef.current = null;
         if (pingTimer) clearInterval(pingTimer);
         setConnected(false);
         emit({ type: 'disconnected' });
@@ -91,6 +99,9 @@ export function SocketProvider({ children }: PropsWithChildren) {
       subscribe: (listener) => {
         listeners.current.add(listener);
         return () => listeners.current.delete(listener);
+      },
+      send: (payload) => {
+        if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(JSON.stringify(payload));
       },
     }}>
       {children}

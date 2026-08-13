@@ -7,6 +7,8 @@ export interface User {
   avatarUrl: string | null;
   isOnline: boolean;
   lastSeenAt: string | null;
+  phoneCode?: string | null;
+  phone?: string | null;
   remark?: string | null;
 }
 
@@ -18,6 +20,7 @@ export interface Conversation {
   members: User[];
   unreadCount: number;
   updatedAt: string;
+  lastMessage?: Message;
 }
 
 export interface GroupSummary {
@@ -38,6 +41,29 @@ export interface GroupMember {
   joinedAt: string;
 }
 
+export interface GroupSettings {
+  canSend: 'everyone' | 'admins';
+  canSendMedia: 'everyone' | 'admins';
+  canAddMembers: 'everyone' | 'admins';
+  canEditInfo: 'everyone' | 'admins';
+}
+
+export interface GroupCustomization {
+  theme: string;
+  font: string;
+  wallpaper: string;
+  bubble: string;
+  density: string;
+  radius: number;
+}
+
+export interface ChatPrefs {
+  showTimestamps: boolean;
+  showReceipts: boolean;
+  showTyping: boolean;
+  sound: string;
+}
+
 export interface Group {
   id: string;
   name: string;
@@ -49,6 +75,8 @@ export interface Group {
   myRole: GroupRole;
   members: GroupMember[];
   updatedAt: string;
+  settings: GroupSettings;
+  customization: GroupCustomization | null;
 }
 
 export interface GroupApplication {
@@ -73,15 +101,23 @@ export interface UserSearchResult extends User {
   isBlocked: boolean;
 }
 
+export interface Reaction {
+  emoji: string;
+  userId: string;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
   senderId: string;
   content: string;
+  replyToId: string | null;
+  reactions: Reaction[];
   createdAt: string;
   editedAt: string | null;
   deletedAt: string | null;
   attachments: Attachment[];
+  readByCount: number;
 }
 
 export interface Attachment {
@@ -105,7 +141,8 @@ export type SocketEvent =
   | { type: 'message.created' | 'message.updated'; message: Message }
   | { type: 'message.deleted'; message: Message }
   | { type: 'presence.updated'; userId: string; isOnline: boolean; lastSeenAt: string | null }
-  | { type: 'group.updated'; groupId: string }
+  | { type: 'typing.start' | 'typing.stop'; conversationId: string; userId: string }
+  | { type: 'group.updated'; groupId: string; group?: unknown }
   | { type: 'group.deleted'; groupId: string }
   | { type: 'group.member.removed'; groupId: string; userId: string }
   | { type: 'group.member.added'; groupId: string; userId: string }

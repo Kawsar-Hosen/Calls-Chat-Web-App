@@ -5,6 +5,7 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import { useAuth } from '@/auth';
+import { useI18n } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { FriendRequest } from '@/types';
 import { Avatar, SkeletonList } from '@/ui';
@@ -12,6 +13,7 @@ import { Avatar, SkeletonList } from '@/ui';
 export default function FriendRequestsScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const { t } = useI18n();
   const router = useRouter();
   const [items, setItems] = useState<FriendRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,9 +25,9 @@ export default function FriendRequestsScreen() {
     if (!quiet) setLoading(true);
     setError('');
     try { setItems(await api.friendRequests(user.id)); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to load requests'); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : t('unableLoadRequests')); }
     finally { setLoading(false); setRefreshing(false); }
-  }, [user]);
+  }, [user, t]);
 
   useFocusEffect(useCallback(() => { void load(items.length > 0); }, [load]));
 
@@ -33,14 +35,14 @@ export default function FriendRequestsScreen() {
     try {
       await api.respondFriendRequest(request.id, accept);
       setItems((current) => current.filter((item) => item.id !== request.id));
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not respond'); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('couldNotRespond')); }
   };
 
   const cancel = async (request: FriendRequest) => {
     try {
       await api.cancelFriendRequest(request.id);
       setItems((current) => current.filter((item) => item.id !== request.id));
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not cancel'); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('couldNotCancel')); }
   };
 
   if (!user) return null;
@@ -48,7 +50,7 @@ export default function FriendRequestsScreen() {
     <SafeAreaView edges={['top']} style={[styles.safe, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <Pressable accessibilityLabel="Back" hitSlop={10} onPress={() => router.back()} style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.5 : 1 }]}><MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} /></Pressable>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>New Friends</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>{t('newFriends')}</Text>
       </View>
       {loading ? <SkeletonList rows={6} /> : (
         <FlatList
@@ -56,13 +58,13 @@ export default function FriendRequestsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={items.length ? styles.list : styles.emptyList}
           refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent} onRefresh={() => { setRefreshing(true); void load(true); }} />}
-          ListEmptyComponent={<View style={styles.empty}><MaterialCommunityIcons name="account-check-outline" size={40} color={colors.faint} /><Text style={[styles.emptyTitle, { color: colors.text }]}>{error ? 'Could not load requests' : 'No friend requests'}</Text><Text style={[styles.emptyCopy, { color: error ? colors.danger : colors.muted }]}>{error || 'Requests you send and receive will appear here.'}</Text></View>}
+          ListEmptyComponent={<View style={styles.empty}><MaterialCommunityIcons name="account-check-outline" size={40} color={colors.faint} /><Text style={[styles.emptyTitle, { color: colors.text }]}>{error ? t('couldNotLoadRequests') : t('noFriendRequests')}</Text><Text style={[styles.emptyCopy, { color: error ? colors.danger : colors.muted }]}>{error || t('emptyRequests')}</Text></View>}
           renderItem={({ item }) => (
             <View style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Avatar name={item.user.displayName} size={46} online={item.user.isOnline} />
               <View style={styles.rowCopy}>
                 <Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>{item.user.displayName}</Text>
-                <Text numberOfLines={1} style={[styles.handle, { color: colors.muted }]}>@{item.user.username} · {item.direction === 'incoming' ? 'wants to add you' : 'request sent'}</Text>
+                <Text numberOfLines={1} style={[styles.handle, { color: colors.muted }]}>@{item.user.username} · {item.direction === 'incoming' ? t('wantsToAddYou') : t('requestSentShort')}</Text>
               </View>
               {item.direction === 'incoming' ? (
                 <View style={styles.actions}>
@@ -70,7 +72,7 @@ export default function FriendRequestsScreen() {
                   <Pressable onPress={() => void respond(item, false)} style={({ pressed }) => [styles.reject, { backgroundColor: colors.elevated, opacity: pressed ? 0.6 : 1 }]}><MaterialCommunityIcons name="close" size={18} color={colors.muted} /></Pressable>
                 </View>
               ) : (
-                <Pressable onPress={() => void cancel(item)} style={({ pressed }) => [styles.cancel, { borderColor: colors.border, opacity: pressed ? 0.6 : 1 }]}><Text style={{ color: colors.muted, fontSize: 12, fontWeight: '700' }}>Cancel</Text></Pressable>
+                <Pressable onPress={() => void cancel(item)} style={({ pressed }) => [styles.cancel, { borderColor: colors.border, opacity: pressed ? 0.6 : 1 }]}><Text style={{ color: colors.muted, fontSize: 12, fontWeight: '700' }}>{t('cancel')}</Text></Pressable>
               )}
             </View>
           )}

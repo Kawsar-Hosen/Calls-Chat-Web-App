@@ -4,12 +4,14 @@ import { useCallback, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
+import { useI18n } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { User } from '@/types';
 import { Avatar, SkeletonList } from '@/ui';
 
 export default function BlacklistScreen() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const router = useRouter();
   const [items, setItems] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,9 +22,9 @@ export default function BlacklistScreen() {
     if (!quiet) setLoading(true);
     setError('');
     try { setItems(await api.blocks()); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to load blacklist'); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : t('unableLoadBlacklist')); }
     finally { setLoading(false); setRefreshing(false); }
-  }, []);
+  }, [t]);
 
   useFocusEffect(useCallback(() => { void load(items.length > 0); }, [load]));
 
@@ -30,14 +32,14 @@ export default function BlacklistScreen() {
     try {
       await api.unblockUser(user.id);
       setItems((current) => current.filter((item) => item.id !== user.id));
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not unblock'); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('couldNotUnblock')); }
   };
 
   return (
     <SafeAreaView edges={['top']} style={[styles.safe, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <Pressable accessibilityLabel="Back" hitSlop={10} onPress={() => router.back()} style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.5 : 1 }]}><MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} /></Pressable>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Blacklist</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>{t('blacklist')}</Text>
       </View>
       {loading ? <SkeletonList rows={6} /> : (
         <FlatList
@@ -45,12 +47,12 @@ export default function BlacklistScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={items.length ? styles.list : styles.emptyList}
           refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent} onRefresh={() => { setRefreshing(true); void load(true); }} />}
-          ListEmptyComponent={<View style={styles.empty}><MaterialCommunityIcons name="shield-off-outline" size={40} color={colors.faint} /><Text style={[styles.emptyTitle, { color: colors.text }]}>{error ? 'Could not load blacklist' : 'Blacklist is empty'}</Text><Text style={[styles.emptyCopy, { color: error ? colors.danger : colors.muted }]}>{error || 'Blocked users cannot message you or be messaged by you.'}</Text></View>}
+          ListEmptyComponent={<View style={styles.empty}><MaterialCommunityIcons name="shield-off-outline" size={40} color={colors.faint} /><Text style={[styles.emptyTitle, { color: colors.text }]}>{error ? t('couldNotLoadBlacklist') : t('blacklistEmpty')}</Text><Text style={[styles.emptyCopy, { color: error ? colors.danger : colors.muted }]}>{error || t('blacklistEmptyCopy')}</Text></View>}
           renderItem={({ item }) => (
             <View style={[styles.row, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
               <Avatar name={item.displayName} size={46} />
               <View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>{item.displayName}</Text><Text numberOfLines={1} style={[styles.handle, { color: colors.muted }]}>@{item.username}</Text></View>
-              <Pressable onPress={() => void unblock(item)} style={({ pressed }) => [styles.unblock, { borderColor: colors.border, opacity: pressed ? 0.6 : 1 }]}><Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>Unblock</Text></Pressable>
+              <Pressable onPress={() => void unblock(item)} style={({ pressed }) => [styles.unblock, { borderColor: colors.border, opacity: pressed ? 0.6 : 1 }]}><Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>{t('unblock')}</Text></Pressable>
             </View>
           )}
         />

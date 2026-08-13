@@ -8,7 +8,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (data: { displayName: string; username: string; email: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (data: { displayName: string; username: string; bio: string; avatarUrl?: string | null }) => Promise<void>;
+  updateProfile: (data: { displayName?: string; username?: string; bio?: string; avatarUrl?: string | null; email?: string; phoneCode?: string | null; phone?: string | null }) => Promise<void>;
   uploadAvatar: (uri: string, onProgress?: (pct: number) => void) => Promise<void>;
 }
 
