@@ -1,0 +1,541 @@
+from datetime import datetime, timedelta, timezone
+import jwt
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from sqlalchemy import and_, delete, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth import (create_access_token, create_refresh_token, decode_token, hash_password,
+                      token_digest, verify_password)
+from app.config import settings
+from app.db import get_db
+from app.dependencies import get_current_session, get_current_user, websocket_user
+from app.models import (AuthSession, Block, Conversation, ConversationMember, Device, FriendRequest,
+                         Friendship, Group, GroupApplication, GroupMember, MediaAttachment, Message,
+                         MessageRead, Reaction, User, new_id, utcnow)
+from app.rate_limit import auth_rate_limit
+from app.schemas import *
+from app.services import (are_friends, aware, ensure_not_blocked, group_summary, group_view,
+                          member_ids, message_view, public_members, require_group, require_group_member,
+                          require_group_role, require_member, sync_group_conversation_members, unread_count)
+from app.storage import storage
+from app.websocket import manager
+
+router = APIRouter()
+
+
+def pair_key(a: str, b: str) -> str:
+    return ":".join(sorted((a, b)))
+
+
+async def issue_tokens(db: AsyncSession, user: User, device_name: str, request: Request | None) -> TokenPair:
+    session_id = new_id()
+    refresh = create_refresh_token(user.id, session_id)
+    session = AuthSession(id=session_id, user_id=user.id, refresh_token_hash=token_digest(refresh),
+                          device_name=device_name, user_agent=request.headers.get("user-agent") if request else None,
+                          ip_address=request.client.host if request and request.client else None,
+                          expires_at=utcnow() + timedelta(days=settings.refresh_token_days))
+    db.add(session)
+    return TokenPair(access_token=create_access_token(user.id, session.id), refresh_token=refresh)
+
+
+@router.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@router.post("/auth/register", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
+async def register(data: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    if await db.scalar(select(User.id).where(or_(User.email == data.email.lower(), User.username == data.username))):
+        raise HTTPException(409, "Email or username already exists")
+    user = User(email=data.email.lower(), username=data.username, display_name=data.display_name,
+                password_hash=hash_password(data.password))
+    db.add(user)
+    await db.flush()
+    tokens = await issue_tokens(db, user, data.device_name, request)
+    await db.commit()
+    return AuthResponse(**tokens.model_dump(), user=user)
+
+
+@router.post("/auth/login", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
+async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    user = await db.scalar(select(User).where(User.email == data.email.lower()))
+    if not user or not verify_password(data.password, user.password_hash):
+        raise HTTPException(401, "Invalid credentials")
+    tokens = await issue_tokens(db, user, data.device_name, request)
+    await db.commit()
+    return AuthResponse(**tokens.model_dump(), user=user)
+
+
+@router.post("/auth/refresh", response_model=TokenPair)
+async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        payload = decode_token(data.refresh_token, "refresh")
+    except jwt.PyJWTError as exc:
+        raise HTTPException(401, "Invalid refresh token") from exc
+    session = await db.scalar(select(AuthSession).where(AuthSession.id == payload["sid"], AuthSession.user_id == payload["sub"]))
+    now = utcnow()
+    if not session or session.revoked_at or aware(session.expires_at) < now or session.refresh_token_hash != token_digest(data.refresh_token):
+        raise HTTPException(401, "Refresh session expired or revoked")
+    session.revoked_at = now
+    user = await db.get(User, session.user_id)
+    tokens = await issue_tokens(db, user, session.device_name, None)
+    await db.commit()
+    return tokens
+
+
+@router.post("/auth/logout", status_code=204)
+async def logout(session: AuthSession = Depends(get_current_session), db: AsyncSession = Depends(get_db)):
+    session.revoked_at = utcnow()
+    await db.commit()
+
+
+@router.get("/profile", response_model=UserMe)
+async def profile(user: User = Depends(get_current_user)) -> User:
+    return user
+
+
+@router.patch("/profile", response_model=UserMe)
+async def update_profile(data: ProfileUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if data.username and data.username != user.username and await db.scalar(select(User.id).where(User.username == data.username)):
+        raise HTTPException(409, "Username already exists")
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(user, key, str(value) if key == "avatar_url" and value else value)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.post("/profile/avatar", response_model=UploadResponse)
+async def avatar(file: UploadFile = File(...), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not (file.content_type or "").startswith("image/"): raise HTTPException(415, "Avatar must be an image")
+    user.avatar_url = await storage.save(file, avatar=True)
+    await db.commit()
+    return UploadResponse(url=user.avatar_url)
+
+
+@router.post("/media/upload", response_model=MediaUploadResponse, status_code=201)
+async def upload_media(file: UploadFile = File(...), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    url = await storage.save(file)
+    item = MediaAttachment(
+        uploader_id=user.id,
+        name=(file.filename or "attachment")[:255],
+        url=url,
+        mime_type=file.content_type or "application/octet-stream",
+        size=file.size or 0,
+    )
+    db.add(item); await db.commit(); await db.refresh(item)
+    return item
+
+
+@router.get("/users/search", response_model=list[UserSearchResult])
+async def search_users(q: str = Query(min_length=1, max_length=80), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    pattern = f"%{q}%"
+    users = list((await db.scalars(select(User).where(User.id != user.id, or_(User.username.ilike(pattern), User.display_name.ilike(pattern))).limit(20))).all())
+    result = []
+    for item in users:
+        friend = await are_friends(db, user.id, item.id)
+        blocked = bool(await db.scalar(select(Block.id).where(or_(and_(Block.blocker_id == user.id, Block.blocked_id == item.id), and_(Block.blocker_id == item.id, Block.blocked_id == user.id)))))
+        request = await db.scalar(select(FriendRequest).where(or_((FriendRequest.requester_id == user.id) & (FriendRequest.recipient_id == item.id), (FriendRequest.requester_id == item.id) & (FriendRequest.recipient_id == user.id)), FriendRequest.status == "pending"))
+        request_status = None
+        if request:
+            request_status = "outgoing" if request.requester_id == user.id else "incoming"
+        result.append(UserSearchResult.model_validate(item).model_copy(update={"is_friend": friend, "request_status": request_status, "is_blocked": blocked}))
+    return result
+
+
+@router.post("/friends/requests", response_model=FriendRequestView, status_code=201)
+async def send_request(data: FriendRequestCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if data.user_id == user.id or not await db.get(User, data.user_id): raise HTTPException(404, "User not found")
+    await ensure_not_blocked(db, user.id, data.user_id)
+    existing = await db.scalar(select(FriendRequest).where(or_((FriendRequest.requester_id == user.id) & (FriendRequest.recipient_id == data.user_id), (FriendRequest.requester_id == data.user_id) & (FriendRequest.recipient_id == user.id))))
+    if existing:
+        if existing.status == "accepted": raise HTTPException(409, "Already friends")
+        if existing.requester_id == data.user_id and existing.status == "pending":
+            existing.status = "accepted"; db.add(Friendship(user_low_id=min(user.id, data.user_id), user_high_id=max(user.id, data.user_id))); await db.commit(); return existing
+        raise HTTPException(409, "Request already exists")
+    item = FriendRequest(requester_id=user.id, recipient_id=data.user_id); db.add(item); await db.commit(); await db.refresh(item)
+    return item
+
+
+@router.get("/friends/requests", response_model=list[FriendRequestView])
+async def list_requests(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    return list((await db.scalars(select(FriendRequest).where(or_(FriendRequest.requester_id == user.id, FriendRequest.recipient_id == user.id)).order_by(FriendRequest.created_at.desc()))).all())
+
+
+@router.post("/friends/requests/{request_id}/{action}", response_model=FriendRequestView)
+async def request_action(request_id: str, action: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    item = await db.get(FriendRequest, request_id)
+    if not item or user.id not in (item.requester_id, item.recipient_id): raise HTTPException(404, "Request not found")
+    if action == "accept" and item.recipient_id == user.id:
+        item.status = "accepted"
+        if not await are_friends(db, item.requester_id, item.recipient_id): db.add(Friendship(user_low_id=min(item.requester_id, item.recipient_id), user_high_id=max(item.requester_id, item.recipient_id)))
+    elif action in ("reject", "cancel") and ((action == "cancel" and item.requester_id == user.id) or (action == "reject" and item.recipient_id == user.id)): item.status = action + "ed" if action == "reject" else "cancelled"
+    else: raise HTTPException(403, "Action not allowed")
+    await db.commit(); return item
+
+
+@router.get("/friends", response_model=list[FriendView])
+async def list_friends(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    rows = (await db.scalars(select(Friendship).where(or_(Friendship.user_low_id == user.id, Friendship.user_high_id == user.id)))).all()
+    result = []
+    for item in rows:
+        friend_id = item.user_high_id if item.user_low_id == user.id else item.user_low_id
+        friend = await db.get(User, friend_id)
+        if not friend:
+            continue
+        remark = item.low_remark if item.user_low_id == user.id else item.high_remark
+        result.append(FriendView.model_validate(friend).model_copy(update={"remark": remark}))
+    return result
+
+
+@router.patch("/friends/{friend_id}", response_model=FriendView)
+async def set_friend_remark(friend_id: str, data: FriendRemarkUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    item = await db.scalar(select(Friendship).where(Friendship.user_low_id == min(user.id, friend_id), Friendship.user_high_id == max(user.id, friend_id)))
+    if not item:
+        raise HTTPException(404, "Friendship not found")
+    remark = data.remark.strip() if data.remark else None
+    if item.user_low_id == user.id:
+        item.low_remark = remark
+    else:
+        item.high_remark = remark
+    await db.commit()
+    friend = await db.get(User, friend_id)
+    return FriendView.model_validate(friend).model_copy(update={"remark": remark})
+
+
+@router.delete("/friends/{friend_id}", status_code=204)
+async def remove_friend(friend_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    item = await db.scalar(select(FriendRequest).where(FriendRequest.status == "accepted", or_((FriendRequest.requester_id == user.id) & (FriendRequest.recipient_id == friend_id), (FriendRequest.requester_id == friend_id) & (FriendRequest.recipient_id == user.id))))
+    if not item: raise HTTPException(404, "Friendship not found")
+    friendship = await db.scalar(select(Friendship).where(Friendship.user_low_id == min(user.id, friend_id), Friendship.user_high_id == max(user.id, friend_id)))
+    await db.delete(item)
+    if friendship: await db.delete(friendship)
+    await db.commit()
+
+
+@router.post("/blocks/{user_id}", status_code=204)
+async def block_user(user_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user_id == user.id or not await db.get(User, user_id): raise HTTPException(404, "User not found")
+    if not await db.scalar(select(Block.id).where(Block.blocker_id == user.id, Block.blocked_id == user_id)):
+        db.add(Block(blocker_id=user.id, blocked_id=user_id)); await db.execute(delete(FriendRequest).where(or_(and_(FriendRequest.requester_id == user.id, FriendRequest.recipient_id == user_id), and_(FriendRequest.requester_id == user_id, FriendRequest.recipient_id == user.id)))); await db.execute(delete(Friendship).where(Friendship.user_low_id == min(user.id, user_id), Friendship.user_high_id == max(user.id, user_id)))
+    await db.commit()
+
+
+@router.delete("/blocks/{user_id}", status_code=204)
+async def unblock_user(user_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    item = await db.scalar(select(Block).where(Block.blocker_id == user.id, Block.blocked_id == user_id))
+    if not item: raise HTTPException(404, "Block not found")
+    await db.delete(item); await db.commit()
+
+
+@router.post("/conversations", response_model=ConversationView)
+async def create_conversation(data: ConversationCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    other = await db.get(User, data.user_id)
+    if not other or other.id == user.id: raise HTTPException(404, "User not found")
+    await ensure_not_blocked(db, user.id, other.id)
+    if not await are_friends(db, user.id, other.id): raise HTTPException(403, "Users must be friends")
+    key = pair_key(user.id, other.id); conversation = await db.scalar(select(Conversation).where(Conversation.direct_key == key))
+    if not conversation:
+        conversation = Conversation(direct_key=key); db.add(conversation); await db.flush(); db.add_all([ConversationMember(conversation_id=conversation.id, user_id=user.id), ConversationMember(conversation_id=conversation.id, user_id=other.id)]); await db.commit()
+    return await conversation_view(db, conversation, user.id)
+
+
+async def conversation_view(db: AsyncSession, conversation: Conversation, user_id: str) -> ConversationView:
+    member = await require_member(db, conversation.id, user_id)
+    base = ConversationView(id=conversation.id, kind=conversation.kind, members=await public_members(db, conversation.id),
+                            unread_count=await unread_count(db, member), updated_at=conversation.updated_at)
+    if conversation.kind == "group":
+        group = await db.scalar(select(Group).where(Group.conversation_id == conversation.id))
+        if group:
+            base.title = group.name
+            base.group = await group_summary(db, group, user_id)
+    return base
+
+
+@router.get("/conversations", response_model=list[ConversationView])
+async def conversations(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    ids = (await db.scalars(select(ConversationMember.conversation_id).where(ConversationMember.user_id == user.id))).all()
+    result = []
+    for conversation in (await db.scalars(select(Conversation).where(Conversation.id.in_(ids)).order_by(Conversation.updated_at.desc()))).all():
+        result.append(await conversation_view(db, conversation, user.id))
+    return result
+
+
+@router.get("/conversations/{conversation_id}/messages", response_model=MessagePage)
+async def list_messages(conversation_id: str, before: datetime | None = None, limit: int = Query(50, ge=1, le=100), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await require_member(db, conversation_id, user.id)
+    query = select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at.desc()).limit(limit + 1)
+    if before: query = query.where(Message.created_at < before)
+    rows = list((await db.scalars(query)).all()); has_more = len(rows) > limit; rows = rows[:limit]
+    return MessagePage(items=[await message_view(db, row) for row in reversed(rows)], next_cursor=rows[-1].created_at.isoformat() if has_more and rows else None)
+
+
+@router.post("/conversations/{conversation_id}/messages", response_model=MessageView, status_code=201)
+async def send_message(conversation_id: str, data: MessageCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await require_member(db, conversation_id, user.id)
+    if not data.content and not data.attachment_ids: raise HTTPException(422, "Message or attachment required")
+    if data.reply_to_id and not await db.scalar(select(Message.id).where(Message.id == data.reply_to_id, Message.conversation_id == conversation_id)): raise HTTPException(400, "Reply target not found")
+    attachments = []
+    if data.attachment_ids:
+        attachments = list((await db.scalars(select(MediaAttachment).where(MediaAttachment.id.in_(data.attachment_ids), MediaAttachment.uploader_id == user.id, MediaAttachment.message_id.is_(None)))).all())
+        if len(attachments) != len(set(data.attachment_ids)): raise HTTPException(400, "Invalid attachment")
+    item = Message(conversation_id=conversation_id, sender_id=user.id, content=data.content, reply_to_id=data.reply_to_id); db.add(item); await db.flush()
+    for attachment in attachments: attachment.message_id = item.id
+    conversation = await db.get(Conversation, conversation_id); conversation.updated_at = utcnow(); await db.commit()
+    result = await message_view(db, item); await manager.send_users(await member_ids(db, conversation_id), {"type": "message.created", "message": result.model_dump(mode="json")})
+    return result
+
+
+@router.patch("/messages/{message_id}", response_model=MessageView)
+async def edit_message(message_id: str, data: MessageUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    item = await db.get(Message, message_id)
+    if not item or item.sender_id != user.id: raise HTTPException(404, "Message not found")
+    item.content = data.content.strip(); item.edited_at = utcnow(); await db.commit(); result = await message_view(db, item)
+    await manager.send_users(await member_ids(db, item.conversation_id), {"type": "message.updated", "message": result.model_dump(mode="json")})
+    return result
+
+
+@router.delete("/messages/{message_id}", response_model=MessageView)
+async def delete_message(message_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    item = await db.get(Message, message_id)
+    if not item or item.sender_id != user.id: raise HTTPException(404, "Message not found")
+    item.content = ""; item.deleted_at = utcnow(); await db.commit(); result = await message_view(db, item)
+    await manager.send_users(await member_ids(db, item.conversation_id), {"type": "message.deleted", "message": result.model_dump(mode="json")})
+    return result
+
+
+@router.post("/messages/{message_id}/reactions", response_model=MessageView)
+async def toggle_reaction(message_id: str, data: ReactionToggle, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    item = await db.get(Message, message_id)
+    if not item: raise HTTPException(404, "Message not found")
+    await require_member(db, item.conversation_id, user.id)
+    reaction = await db.scalar(select(Reaction).where(Reaction.message_id == message_id, Reaction.user_id == user.id, Reaction.emoji == data.emoji))
+    if reaction: await db.delete(reaction)
+    else: db.add(Reaction(message_id=message_id, user_id=user.id, emoji=data.emoji))
+    await db.commit(); result = await message_view(db, item)
+    await manager.send_users(await member_ids(db, item.conversation_id), {"type": "reaction.updated", "message": result.model_dump(mode="json")})
+    return result
+
+
+@router.post("/conversations/{conversation_id}/read", status_code=204)
+async def mark_read(conversation_id: str, data: ReadRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    member = await require_member(db, conversation_id, user.id)
+    message = await db.scalar(select(Message).where(Message.id == data.message_id, Message.conversation_id == conversation_id))
+    if not message: raise HTTPException(404, "Message not found")
+    member.last_read_at = message.created_at
+    if not await db.scalar(select(MessageRead.id).where(MessageRead.message_id == message.id, MessageRead.user_id == user.id)): db.add(MessageRead(message_id=message.id, user_id=user.id))
+    await db.commit(); await manager.send_users(await member_ids(db, conversation_id), {"type": "message.read", "conversation_id": conversation_id, "user_id": user.id, "message_id": message.id}, exclude=user.id)
+
+
+@router.post("/devices", status_code=204)
+async def register_device(data: DeviceCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not await db.scalar(select(Device.id).where(Device.user_id == user.id, Device.push_token == data.push_token)):
+        db.add(Device(user_id=user.id, push_token=data.push_token, platform=data.platform)); await db.commit()
+
+
+@router.get("/messages/search", response_model=list[MessageView])
+async def search_messages(q: str = Query(min_length=1, max_length=100), conversation_id: str | None = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    query = select(Message).join(ConversationMember, ConversationMember.conversation_id == Message.conversation_id).where(ConversationMember.user_id == user.id, Message.content.ilike(f"%{q}%")).order_by(Message.created_at.desc()).limit(50)
+    if conversation_id: query = query.where(Message.conversation_id == conversation_id)
+    return [await message_view(db, item) for item in (await db.scalars(query)).all()]
+
+
+@router.get("/users/{user_id}/presence", response_model=UserPublic)
+async def presence(user_id: str, _: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    item = await db.get(User, user_id)
+    if not item: raise HTTPException(404, "User not found")
+    return item
+
+
+@router.get("/blocks", response_model=list[UserPublic])
+async def list_blocks(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    users = list((await db.scalars(select(User).join(Block, Block.blocked_id == User.id).where(Block.blocker_id == user.id).order_by(User.display_name))).all())
+    return users
+
+
+@router.post("/groups", response_model=GroupView, status_code=201)
+async def create_group(data: GroupCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    member_ids = list(dict.fromkeys([user.id, *data.member_ids]))
+    for member_id in member_ids:
+        if not await db.get(User, member_id): raise HTTPException(400, "Unknown user")
+        await ensure_not_blocked(db, user.id, member_id)
+    conversation = Conversation(kind="group"); db.add(conversation); await db.flush()
+    group = Group(name=data.name, description=data.description, conversation_id=conversation.id, owner_id=user.id)
+    db.add(group); await db.flush()
+    for member_id in member_ids:
+        db.add(GroupMember(group_id=group.id, user_id=member_id, role="owner" if member_id == user.id else "member"))
+        db.add(ConversationMember(conversation_id=conversation.id, user_id=member_id))
+    await db.commit()
+    return await group_view(db, group, user.id)
+
+
+@router.get("/groups", response_model=list[GroupView])
+async def my_groups(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    groups = list((await db.scalars(select(Group).join(GroupMember, GroupMember.group_id == Group.id).where(GroupMember.user_id == user.id).order_by(Group.updated_at.desc()))).all())
+    return [await group_view(db, group, user.id) for group in groups]
+
+
+@router.get("/groups/search", response_model=list[GroupView])
+async def search_groups(q: str = Query(min_length=1, max_length=80), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    pattern = f"%{q}%"
+    groups = list((await db.scalars(select(Group).where(Group.name.ilike(pattern)).limit(20))).all())
+    return [await group_view(db, group, user.id) for group in groups]
+
+
+@router.get("/groups/{group_id}", response_model=GroupView)
+async def group_detail(group_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    group = await require_group(db, group_id)
+    await require_group_member(db, group.id, user.id)
+    return await group_view(db, group, user.id)
+
+
+@router.patch("/groups/{group_id}", response_model=GroupView)
+async def update_group(group_id: str, data: GroupUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    group = await require_group(db, group_id)
+    await require_group_role(db, group.id, user.id, ("owner", "admin"))
+    if data.name is not None: group.name = data.name
+    if data.description is not None: group.description = data.description
+    if data.avatar_url is not None: group.avatar_url = str(data.avatar_url)
+    group.updated_at = utcnow(); await db.commit(); await db.refresh(group)
+    result = await group_view(db, group, user.id)
+    await manager.send_users(await member_ids(db, group.conversation_id), {"type": "group.updated", "group": result.model_dump(mode="json")}, exclude=user.id)
+    return result
+
+
+@router.post("/groups/{group_id}/members", response_model=GroupView)
+async def add_group_members(group_id: str, data: GroupMemberAdd, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    group = await require_group(db, group_id)
+    await require_group_role(db, group.id, user.id, ("owner", "admin"))
+    for member_id in data.user_ids:
+        if not await db.get(User, member_id): raise HTTPException(400, "Unknown user")
+        await ensure_not_blocked(db, user.id, member_id)
+    existing = set((await db.scalars(select(GroupMember.user_id).where(GroupMember.group_id == group.id))).all())
+    for member_id in data.user_ids:
+        if member_id in existing: continue
+        db.add(GroupMember(group_id=group.id, user_id=member_id))
+        existing.add(member_id)
+    group.updated_at = utcnow(); await db.commit()
+    await sync_group_conversation_members(db, group); await db.commit()
+    result = await group_view(db, group, user.id)
+    await manager.send_users(await member_ids(db, group.conversation_id), {"type": "group.updated", "group": result.model_dump(mode="json")}, exclude=user.id)
+    return result
+
+
+@router.delete("/groups/{group_id}/members/{user_id}", response_model=GroupView)
+async def remove_group_member(group_id: str, user_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    group = await require_group(db, group_id)
+    target = await require_group_member(db, group.id, user_id)
+    if user.id == target.user_id:
+        if target.role == "owner": raise HTTPException(403, "Owner cannot leave; delete the group instead")
+    else:
+        await require_group_role(db, group.id, user.id, ("owner", "admin"))
+    conversation_member = await db.scalar(select(ConversationMember).where(ConversationMember.conversation_id == group.conversation_id, ConversationMember.user_id == target.user_id))
+    await db.delete(target)
+    if conversation_member: await db.delete(conversation_member)
+    group.updated_at = utcnow(); await db.commit()
+    result = await group_view(db, group, user.id)
+    await manager.send_users(await member_ids(db, group.conversation_id), {"type": "group.updated", "group": result.model_dump(mode="json")})
+    await manager.send_user(target.user_id, {"type": "group.member.removed", "group_id": group.id, "conversation_id": group.conversation_id, "user_id": target.user_id})
+    return result
+
+
+@router.patch("/groups/{group_id}/members/{user_id}/role", response_model=GroupView)
+async def change_member_role(group_id: str, user_id: str, data: GroupMemberRole, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    group = await require_group(db, group_id)
+    await require_group_role(db, group.id, user.id, ("owner",))
+    target = await require_group_member(db, group.id, user_id)
+    if target.role == "owner": raise HTTPException(403, "Cannot change the owner's role")
+    target.role = data.role; group.updated_at = utcnow(); await db.commit()
+    result = await group_view(db, group, user.id)
+    await manager.send_users(await member_ids(db, group.conversation_id), {"type": "group.updated", "group": result.model_dump(mode="json")})
+    return result
+
+
+@router.delete("/groups/{group_id}", status_code=204)
+async def delete_group(group_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    group = await require_group(db, group_id)
+    await require_group_role(db, group.id, user.id, ("owner",))
+    conversation_id = group.conversation_id
+    member_ids_of_group = await member_ids(db, conversation_id)
+    await db.execute(delete(ConversationMember).where(ConversationMember.conversation_id == conversation_id))
+    await db.delete(group)
+    conversation = await db.get(Conversation, conversation_id)
+    if conversation: await db.delete(conversation)
+    await db.commit()
+    await manager.send_users(member_ids_of_group, {"type": "group.deleted", "group_id": group_id, "conversation_id": conversation_id})
+
+
+@router.post("/groups/{group_id}/applications", response_model=GroupApplicationView, status_code=201)
+async def apply_to_group(group_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    group = await require_group(db, group_id)
+    if await db.scalar(select(GroupMember.id).where(GroupMember.group_id == group.id, GroupMember.user_id == user.id)):
+        raise HTTPException(409, "Already a member")
+    await ensure_not_blocked(db, group.owner_id, user.id)
+    existing = await db.scalar(select(GroupApplication).where(GroupApplication.group_id == group.id, GroupApplication.applicant_id == user.id))
+    if existing:
+        if existing.status == "pending": raise HTTPException(409, "Application already pending")
+        existing.status = "pending"; existing.updated_at = utcnow()
+    else:
+        existing = GroupApplication(group_id=group.id, applicant_id=user.id); db.add(existing)
+    await db.commit(); await db.refresh(existing)
+    return GroupApplicationView(id=existing.id, group_id=group.id, group_name=group.name, applicant=user, status=existing.status, created_at=existing.created_at)
+
+
+@router.get("/groups/{group_id}/applications", response_model=list[GroupApplicationView])
+async def list_group_applications(group_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    group = await require_group(db, group_id)
+    await require_group_role(db, group.id, user.id, ("owner", "admin"))
+    rows = (await db.scalars(select(GroupApplication).where(GroupApplication.group_id == group.id, GroupApplication.status == "pending").order_by(GroupApplication.created_at.desc()))).all()
+    result = []
+    for item in rows:
+        applicant = await db.get(User, item.applicant_id)
+        result.append(GroupApplicationView(id=item.id, group_id=group.id, group_name=group.name, applicant=applicant, status=item.status, created_at=item.created_at))
+    return result
+
+
+@router.post("/groups/{group_id}/applications/{application_id}/{action}", response_model=GroupApplicationView)
+async def group_application_action(group_id: str, application_id: str, action: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    group = await require_group(db, group_id)
+    await require_group_role(db, group.id, user.id, ("owner", "admin"))
+    item = await db.get(GroupApplication, application_id)
+    if not item or item.group_id != group.id: raise HTTPException(404, "Application not found")
+    if action not in ("accept", "reject"): raise HTTPException(400, "Action must be accept or reject")
+    item.status = "accepted" if action == "accept" else "rejected"; item.updated_at = utcnow()
+    if action == "accept" and not await db.scalar(select(GroupMember.id).where(GroupMember.group_id == group.id, GroupMember.user_id == item.applicant_id)):
+        db.add(GroupMember(group_id=group.id, user_id=item.applicant_id))
+        await db.commit(); await sync_group_conversation_members(db, group); await db.commit()
+        result = await group_view(db, group, user.id)
+        await manager.send_users(await member_ids(db, group.conversation_id), {"type": "group.updated", "group": result.model_dump(mode="json")})
+    else:
+        await db.commit()
+    applicant = await db.get(User, item.applicant_id)
+    view = GroupApplicationView(id=item.id, group_id=group.id, group_name=group.name, applicant=applicant, status=item.status, created_at=item.created_at)
+    if action == "accept":
+        await manager.send_user(item.applicant_id, {"type": "group.member.added", "group_id": group.id, "conversation_id": group.conversation_id, "user_id": item.applicant_id})
+    return view
+
+
+@router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
+    try:
+        user, db = await websocket_user(websocket, token)
+    except Exception:
+        await websocket.close(code=1008); return
+    await manager.connect(user.id, websocket); user.is_online = True; await db.commit()
+    await manager.send_users(list(manager.connections), {"type": "presence.updated", "user_id": user.id, "is_online": True}, exclude=user.id)
+    try:
+        while True:
+            event = await websocket.receive_json()
+            kind = event.get("type")
+            if kind in ("typing.start", "typing.stop"):
+                conversation_id = event.get("conversation_id")
+                await require_member(db, conversation_id, user.id)
+                await manager.send_users(await member_ids(db, conversation_id), {"type": kind, "conversation_id": conversation_id, "user_id": user.id}, exclude=user.id)
+            elif kind == "ping": await websocket.send_json({"type": "pong"})
+            else: await websocket.send_json({"type": "error", "detail": "Unsupported event"})
+    except WebSocketDisconnect:
+        if manager.disconnect(user.id, websocket):
+            user.is_online = False; user.last_seen_at = utcnow(); await db.commit()
+            await manager.send_users(list(manager.connections), {"type": "presence.updated", "user_id": user.id, "is_online": False, "last_seen_at": user.last_seen_at.isoformat()}, exclude=user.id)
+    finally:
+        await db.close()

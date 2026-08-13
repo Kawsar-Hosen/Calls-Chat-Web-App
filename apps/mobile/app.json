@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "XYTEEE",
+    "slug": "xyteee-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "xyteee",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.xyteee.app"
+    },
+    "android": {
+      "package": "com.xyteee.app"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
