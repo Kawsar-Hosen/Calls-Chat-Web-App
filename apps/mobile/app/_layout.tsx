@@ -1,19 +1,34 @@
 import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
+import * as SplashScreenNative from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/auth';
 import { SocketProvider } from '@/socket';
+import { CallListener } from '@/call-listener';
+import { PushListener } from '@/push-listener';
 import { ThemeProvider, useTheme } from '@/theme';
-import { Skeleton } from '@/ui';
 import { I18nProvider } from '@/i18n';
+import { SplashScreen } from '@/splash';
+
+void SplashScreenNative.preventAutoHideAsync().catch(() => {});
 
 function Navigator() {
   const { loading } = useAuth();
   const { colors, dark } = useTheme();
-  if (loading) {
-    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, backgroundColor: colors.background }}><Skeleton width={46} height={46} radius={13} /><Skeleton width={150} height={13} /></View>;
+  const [nativeHidden, setNativeHidden] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
+
+  useEffect(() => {
+    if (!nativeHidden) {
+      void SplashScreenNative.hideAsync().then(() => setNativeHidden(true)).catch(() => setNativeHidden(true));
+    }
+  }, [nativeHidden]);
+
+  if (loading || !splashDone) {
+    return <SplashScreen ready={!loading} onFinish={() => setSplashDone(true)} />;
   }
   const navigationTheme = {
     ...(dark ? DarkTheme : DefaultTheme),
@@ -27,7 +42,10 @@ function Navigator() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="chat/[id]" />
+        <Stack.Screen name="call" options={{ animation: 'fade' }} />
       </Stack>
+      <CallListener />
+      <PushListener />
     </NavigationThemeProvider>
   );
 }

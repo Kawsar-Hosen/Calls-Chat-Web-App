@@ -1,11 +1,15 @@
 import asyncio
+import hashlib
+import hmac
 import json
+import secrets
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode, urlparse
 from urllib.request import urlopen
 import jwt
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
-from sqlalchemy import and_, delete, or_, select
+from jwt import PyJWKClient
+from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import (create_access_token, create_refresh_token, decode_token, hash_password,
@@ -13,9 +17,11 @@ from app.auth import (create_access_token, create_refresh_token, decode_token, h
 from app.config import settings
 from app.db import get_db
 from app.dependencies import get_current_session, get_current_user, websocket_user
-from app.models import (AuthSession, Block, Conversation, ConversationMember, Device, FriendRequest,
-                         Friendship, Group, GroupApplication, GroupMember, MediaAttachment, Message,
-                         MessageRead, Reaction, User, new_id, utcnow)
+from app.email import generate_deletion_code, mask_email, render_deletion_email, send_email
+from app.models import (AccountDeletion, AuthSession, Block, CallOffer, Conversation, ConversationMember, Device,
+                        FriendRequest, Friendship, Group, GroupApplication, GroupMember, MediaAttachment,
+                        Message, MessageRead, Reaction, User, new_id, utcnow)
+from app.push import push_to_users
 from app.rate_limit import auth_rate_limit
 from app.schemas import *
 from app.services import (are_friends, aware, ensure_not_blocked, group_customization, group_settings,
@@ -24,6 +30,7 @@ from app.services import (are_friends, aware, ensure_not_blocked, group_customiz
                           set_group_customization, set_group_settings, sync_group_conversation_members,
                           unread_count)
 from app.storage import storage
+from app.turn import generate_turn_credentials, turn_configured
 from app.websocket import manager
 
 router = APIRouter()
@@ -48,6 +55,37 @@ def _giphy_item(item: dict, kind: str) -> dict:
 
 def pair_key(a: str, b: str) -> str:
     return ":".join(sorted((a, b)))
+
+
+def offline_recipients(member_user_ids: list[str], exclude: str) -> list[str]:
+    return [uid for uid in member_user_ids if uid != exclude and uid not in manager.connections]
+
+
+async def push_friend_request(db: AsyncSession, requester: User, recipient_id: str) -> None:
+    offline = offline_recipients([recipient_id], requester.id)
+    if offline:
+        await push_to_users(db, offline, {
+            "notification": {"title": "Friend request", "body": f"{requester.display_name} sent you a friend request"},
+            "android": {"notification": {"channel_id": "messages", "sound": "default"}},
+            "data": {"type": "friend.request.received", "requester_id": requester.id, "recipient_id": recipient_id},
+        })
+
+
+def message_push_preview(item: Message, attachments: list[MediaAttachment], fallback: str) -> str:
+    if item.content:
+        return item.content
+    if attachments:
+        mime = attachments[0].mime_type or ""
+        if mime.startswith("image/gif") or mime.startswith("video/mp4"):
+            return "GIF"
+        if mime.startswith("image/"):
+            return "Photo"
+        if mime.startswith("video/"):
+            return "Video"
+        if mime.startswith("audio/"):
+            return "Voice message"
+        return "Attachment"
+    return fallback
 
 
 async def issue_tokens(db: AsyncSession, user: User, device_name: str, request: Request | None) -> TokenPair:
@@ -89,6 +127,62 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
     return AuthResponse(**tokens.model_dump(), user=user)
 
 
+_jwk_client: PyJWKClient | None = None
+
+
+def _google_jwks() -> PyJWKClient:
+    global _jwk_client
+    if _jwk_client is None:
+        _jwk_client = PyJWKClient("https://www.googleapis.com/oauth2/v3/certs")
+    return _jwk_client
+
+
+def _google_claims(id_token: str) -> dict:
+    audiences = [client_id for client_id in (settings.google_client_id, settings.google_android_client_id,
+                                             settings.google_ios_client_id) if client_id]
+    if not audiences:
+        raise HTTPException(503, "Google sign-in is not configured. Set GOOGLE_CLIENT_ID on the server.")
+    try:
+        key = _google_jwks().get_signing_key_from_jwt(id_token)
+        return jwt.decode(id_token, key, algorithms=["RS256"], audience=audiences,
+                          issuer=["accounts.google.com", "https://accounts.google.com"])
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(401, "Invalid Google sign-in token") from exc
+
+
+async def _available_username(db: AsyncSession, preferred: str) -> str:
+    base = "".join(ch for ch in preferred.lower() if ch.isalnum() or ch == "_")[:24] or "user"
+    candidate = base
+    for suffix in range(1, 100):
+        if not await db.scalar(select(User.id).where(User.username == candidate)):
+            return candidate
+        candidate = f"{base}{suffix}"
+    return f"{base}{secrets.token_hex(2)}"
+
+
+@router.post("/auth/google", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
+async def google_auth(data: GoogleAuthRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    claims = _google_claims(data.id_token)
+    email = str(claims.get("email") or "").strip().lower()
+    if not email or claims.get("email_verified") is not True:
+        raise HTTPException(400, "Your Google account does not have a verified email address")
+    display_name = str(claims.get("name") or "").strip()[:80] or email.split("@", 1)[0][:80]
+    picture = str(claims.get("picture") or "").strip() or None
+    user = await db.scalar(select(User).where(User.email == email))
+    if not user:
+        username = await _available_username(db, email.split("@", 1)[0])
+        user = User(email=email, username=username, display_name=display_name,
+                    password_hash=hash_password(secrets.token_urlsafe(48)),
+                    avatar_url=picture if picture.startswith("https://") else None)
+        db.add(user)
+        await db.flush()
+    tokens = await issue_tokens(db, user, data.device_name, request)
+    await db.commit()
+    return AuthResponse(**tokens.model_dump(), user=user)
+
+
 @router.post("/auth/refresh", response_model=TokenPair)
 async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
     try:
@@ -110,6 +204,73 @@ async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
 async def logout(session: AuthSession = Depends(get_current_session), db: AsyncSession = Depends(get_db)):
     session.revoked_at = utcnow()
     await db.commit()
+
+
+@router.post("/account/delete/request", response_model=DeletionCodeSent)
+async def request_account_deletion(data: DeletionCodeRequest, user: User = Depends(get_current_user),
+                                   db: AsyncSession = Depends(get_db)):
+    if not verify_password(data.password, user.password_hash):
+        raise HTTPException(401, "Incorrect password")
+    if not settings.smtp_user and not settings.smtp_password:
+        raise HTTPException(503, "Email sending is not configured. Set SMTP_USER, SMTP_PASSWORD and SMTP_FROM in the environment.")
+    code = generate_deletion_code()
+    existing = await db.scalar(select(AccountDeletion).where(AccountDeletion.user_id == user.id))
+    if existing:
+        existing.code_hash = hashlib.sha256(code.encode()).hexdigest()
+        existing.expires_at = utcnow() + timedelta(minutes=10)
+    else:
+        db.add(AccountDeletion(user_id=user.id, code_hash=hashlib.sha256(code.encode()).hexdigest(),
+                               expires_at=utcnow() + timedelta(minutes=10)))
+    await db.flush()
+    try:
+        await asyncio.to_thread(send_email, user.email, "Confirm account deletion",
+                                render_deletion_email(code, user.display_name))
+    except HTTPException:
+        await db.rollback()
+        raise
+    await db.commit()
+    return DeletionCodeSent(message="Verification code sent to your email", email_masked=mask_email(user.email))
+
+
+@router.delete("/account", status_code=204)
+async def delete_account(data: DeleteAccountRequest, user: User = Depends(get_current_user),
+                         db: AsyncSession = Depends(get_db)):
+    if not verify_password(data.password, user.password_hash):
+        raise HTTPException(401, "Incorrect password")
+    pending = await db.scalar(select(AccountDeletion).where(AccountDeletion.user_id == user.id))
+    if not pending or not hmac.compare_digest(pending.code_hash, hashlib.sha256(data.code.encode()).hexdigest()):
+        raise HTTPException(400, "Invalid verification code")
+    if aware(pending.expires_at) < utcnow():
+        raise HTTPException(400, "Verification code expired. Request a new one.")
+
+    direct_conversation_ids = list((await db.execute(
+        select(ConversationMember.conversation_id)
+        .join(Conversation, Conversation.id == ConversationMember.conversation_id)
+        .where(ConversationMember.user_id == user.id, Conversation.kind == "direct")
+    )).scalars().all())
+    group_conversation_ids = list((await db.execute(
+        select(Group.conversation_id).where(Group.owner_id == user.id)
+    )).scalars().all())
+    remove_ids = [c for c in set(direct_conversation_ids + group_conversation_ids) if c]
+    if remove_ids:
+        await db.execute(delete(Conversation).where(Conversation.id.in_(remove_ids)))
+
+    await storage.delete(user.avatar_url)
+    media_urls = list((await db.execute(
+        select(MediaAttachment.url).where(MediaAttachment.uploader_id == user.id)
+    )).scalars().all())
+    for url in media_urls:
+        await storage.delete(url)
+
+    await db.delete(user)
+    await db.flush()
+    orphan_conversation_ids = list((await db.execute(
+        select(Conversation.id).where(~Conversation.id.in_(select(ConversationMember.conversation_id)))
+    )).scalars().all())
+    if orphan_conversation_ids:
+        await db.execute(delete(Conversation).where(Conversation.id.in_(orphan_conversation_ids)))
+    await db.commit()
+    await manager.disconnect_user(user.id)
 
 
 @router.get("/profile", response_model=UserMe)
@@ -163,6 +324,13 @@ async def upload_media(file: UploadFile = File(...), user: User = Depends(get_cu
     return item
 
 
+@router.post("/calls/turn")
+async def turn_credentials(user: User = Depends(get_current_user)):
+    if not turn_configured():
+        raise HTTPException(status_code=503, detail="TURN is not configured")
+    return {"iceServers": await generate_turn_credentials()}
+
+
 @router.get("/giphy/{kind}")
 async def giphy_media(kind: str, q: str = Query(default="", max_length=100), user: User = Depends(get_current_user)):
     if kind not in {"gifs", "stickers"}: raise HTTPException(404, "Unknown media type")
@@ -195,9 +363,11 @@ async def search_result_for(db: AsyncSession, viewer_id: str, item: User) -> Use
     blocked = bool(await db.scalar(select(Block.id).where(or_(and_(Block.blocker_id == viewer_id, Block.blocked_id == item.id), and_(Block.blocker_id == item.id, Block.blocked_id == viewer_id)))))
     request = await db.scalar(select(FriendRequest).where(or_((FriendRequest.requester_id == viewer_id) & (FriendRequest.recipient_id == item.id), (FriendRequest.requester_id == item.id) & (FriendRequest.recipient_id == viewer_id)), FriendRequest.status == "pending"))
     request_status = None
+    request_id = None
     if request:
         request_status = "outgoing" if request.requester_id == viewer_id else "incoming"
-    return UserSearchResult.model_validate(item).model_copy(update={"is_friend": friend, "request_status": request_status, "is_blocked": blocked})
+        request_id = str(request.id)
+    return UserSearchResult.model_validate(item).model_copy(update={"is_friend": friend, "request_status": request_status, "request_id": request_id, "is_blocked": blocked})
 
 
 @router.get("/users/search", response_model=list[UserSearchResult])
@@ -232,10 +402,32 @@ async def send_request(data: FriendRequestCreate, user: User = Depends(get_curre
     existing = await db.scalar(select(FriendRequest).where(or_((FriendRequest.requester_id == user.id) & (FriendRequest.recipient_id == data.user_id), (FriendRequest.requester_id == data.user_id) & (FriendRequest.recipient_id == user.id))))
     if existing:
         if existing.status == "accepted": raise HTTPException(409, "Already friends")
-        if existing.requester_id == data.user_id and existing.status == "pending":
-            existing.status = "accepted"; db.add(Friendship(user_low_id=min(user.id, data.user_id), user_high_id=max(user.id, data.user_id))); await db.commit(); return existing
-        raise HTTPException(409, "Request already exists")
+        if existing.status == "pending":
+            if existing.requester_id == data.user_id:
+                existing.status = "accepted"; db.add(Friendship(user_low_id=min(user.id, data.user_id), user_high_id=max(user.id, data.user_id))); await db.commit()
+                await manager.send_user(data.user_id, {"type": "friend.request.accepted", "requester_id": data.user_id, "recipient_id": user.id})
+                offline = offline_recipients([data.user_id], user.id)
+                if offline:
+                    await push_to_users(db, offline, {
+                        "notification": {"title": "Friend request accepted", "body": f"{user.display_name} accepted your friend request"},
+                        "android": {"notification": {"channel_id": "messages", "sound": "default"}},
+                        "data": {"type": "friend.request.accepted", "requester_id": data.user_id, "recipient_id": user.id},
+                    })
+                return existing
+            raise HTTPException(409, "Request already exists")
+        if existing.requester_id == data.user_id and existing.status == "rejected":
+            raise HTTPException(403, "Recipient rejected your request")
+        existing.requester_id = user.id
+        existing.recipient_id = data.user_id
+        existing.status = "pending"
+        existing.created_at = utcnow()
+        db.add(existing); await db.commit(); await db.refresh(existing)
+        await manager.send_user(data.user_id, {"type": "friend.request.received", "requester_id": user.id, "recipient_id": data.user_id})
+        await push_friend_request(db, user, data.user_id)
+        return existing
     item = FriendRequest(requester_id=user.id, recipient_id=data.user_id); db.add(item); await db.commit(); await db.refresh(item)
+    await manager.send_user(data.user_id, {"type": "friend.request.received", "requester_id": user.id, "recipient_id": data.user_id})
+    await push_friend_request(db, user, data.user_id)
     return item
 
 
@@ -251,9 +443,24 @@ async def request_action(request_id: str, action: str, user: User = Depends(get_
     if action == "accept" and item.recipient_id == user.id:
         item.status = "accepted"
         if not await are_friends(db, item.requester_id, item.recipient_id): db.add(Friendship(user_low_id=min(item.requester_id, item.recipient_id), user_high_id=max(item.requester_id, item.recipient_id)))
-    elif action in ("reject", "cancel") and ((action == "cancel" and item.requester_id == user.id) or (action == "reject" and item.recipient_id == user.id)): item.status = action + "ed" if action == "reject" else "cancelled"
+    elif action == "cancel" and item.requester_id == user.id: item.status = "cancelled"
+    elif action == "reject" and item.recipient_id == user.id: item.status = "rejected"
     else: raise HTTPException(403, "Action not allowed")
-    await db.commit(); return item
+    await db.commit()
+    if action == "accept" and item.recipient_id == user.id:
+        await manager.send_user(item.requester_id, {"type": "friend.request.accepted", "requester_id": item.requester_id, "recipient_id": item.recipient_id})
+        offline = offline_recipients([item.requester_id], item.recipient_id)
+        if offline:
+            await push_to_users(db, offline, {
+                "notification": {"title": "Friend request accepted", "body": f"{user.display_name} accepted your friend request"},
+                "android": {"notification": {"channel_id": "messages", "sound": "default"}},
+                "data": {"type": "friend.request.accepted", "requester_id": item.requester_id, "recipient_id": item.recipient_id},
+            })
+    elif action == "cancel" and item.requester_id == user.id:
+        await manager.send_user(item.recipient_id, {"type": "friend.request.cancelled", "requester_id": item.requester_id, "recipient_id": item.recipient_id})
+    elif action == "reject" and item.recipient_id == user.id:
+        await manager.send_user(item.requester_id, {"type": "friend.request.rejected", "requester_id": item.requester_id, "recipient_id": item.recipient_id})
+    return item
 
 
 @router.get("/friends", response_model=list[FriendView])
@@ -382,7 +589,24 @@ async def send_message(conversation_id: str, data: MessageCreate, user: User = D
     item = Message(conversation_id=conversation_id, sender_id=user.id, content=data.content, reply_to_id=data.reply_to_id); db.add(item); await db.flush()
     for attachment in attachments: attachment.message_id = item.id
     conversation = await db.get(Conversation, conversation_id); conversation.updated_at = utcnow(); await db.commit()
-    result = await message_view(db, item); await manager.send_users(await member_ids(db, conversation_id), {"type": "message.created", "message": result.model_dump(mode="json")})
+    result = await message_view(db, item)
+    recipients = await member_ids(db, conversation_id)
+    await manager.send_users(recipients, {"type": "message.created", "message": result.model_dump(mode="json")})
+    offline = offline_recipients(recipients, user.id)
+    if offline:
+        preview = message_push_preview(item, attachments, "New message")
+        if conversation.kind == "group":
+            group = await db.scalar(select(Group).where(Group.conversation_id == conversation_id))
+            title = group.name if group else "Group"
+            body = f"{user.display_name}: {preview}"
+        else:
+            title = user.display_name
+            body = preview
+        await push_to_users(db, offline, {
+            "notification": {"title": title, "body": body},
+            "android": {"notification": {"channel_id": "messages", "sound": "default"}},
+            "data": {"type": "message", "conversation_id": conversation_id, "message_id": item.id},
+        })
     return result
 
 
@@ -422,6 +646,7 @@ async def mark_read(conversation_id: str, data: ReadRequest, user: User = Depend
     member = await require_member(db, conversation_id, user.id)
     message = await db.scalar(select(Message).where(Message.id == data.message_id, Message.conversation_id == conversation_id))
     if not message: raise HTTPException(404, "Message not found")
+    if message.sender_id == user.id: return
     member.last_read_at = message.created_at
     if not await db.scalar(select(MessageRead.id).where(MessageRead.message_id == message.id, MessageRead.user_id == user.id)): db.add(MessageRead(message_id=message.id, user_id=user.id))
     await db.commit(); await manager.send_users(await member_ids(db, conversation_id), {"type": "message.read", "conversation_id": conversation_id, "user_id": user.id, "message_id": message.id}, exclude=user.id)
@@ -431,6 +656,25 @@ async def mark_read(conversation_id: str, data: ReadRequest, user: User = Depend
 async def register_device(data: DeviceCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if not await db.scalar(select(Device.id).where(Device.user_id == user.id, Device.push_token == data.push_token)):
         db.add(Device(user_id=user.id, push_token=data.push_token, platform=data.platform)); await db.commit()
+
+
+@router.get("/calls/pending")
+async def pending_call(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await db.execute(delete(CallOffer).where(CallOffer.created_at < utcnow() - timedelta(seconds=90)))
+    await db.commit()
+    member_conversation_ids = (await db.scalars(select(ConversationMember.conversation_id).where(ConversationMember.user_id == user.id))).all()
+    if not member_conversation_ids:
+        return None
+    offer = await db.scalar(select(CallOffer).where(
+        CallOffer.conversation_id.in_(member_conversation_ids),
+        CallOffer.caller_id != user.id,
+        CallOffer.consumed.is_(False),
+    ).order_by(CallOffer.created_at.desc()).limit(1))
+    if not offer:
+        return None
+    offer.consumed = True
+    await db.commit()
+    return {"conversation_id": offer.conversation_id, "caller_id": offer.caller_id, "sdp": offer.sdp}
 
 
 @router.get("/messages/search", response_model=list[MessageView])
@@ -647,6 +891,31 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                 conversation_id = event.get("conversation_id")
                 await require_member(db, conversation_id, user.id)
                 await manager.send_users(await member_ids(db, conversation_id), {"type": kind, "conversation_id": conversation_id, "user_id": user.id}, exclude=user.id)
+            elif kind in ("call.offer", "call.answer", "call.ice", "call.hangup", "call.decline"):
+                conversation_id = event.get("conversation_id")
+                if not conversation_id:
+                    await websocket.send_json({"type": "error", "detail": "conversation_id required"}); continue
+                await require_member(db, conversation_id, user.id)
+                relay: dict = {"type": kind, "conversation_id": conversation_id, "user_id": user.id}
+                if kind in ("call.offer", "call.answer"):
+                    relay["sdp"] = event.get("sdp")
+                elif kind == "call.ice":
+                    relay["candidate"] = event.get("candidate")
+                members = await member_ids(db, conversation_id)
+                await manager.send_users(members, relay, exclude=user.id)
+                if kind == "call.offer":
+                    db.add(CallOffer(conversation_id=conversation_id, caller_id=user.id, sdp=event.get("sdp") or ""))
+                    await db.commit()
+                    offline = offline_recipients(members, user.id)
+                    if offline:
+                        await push_to_users(db, offline, {
+                            "notification": {"title": "Incoming call", "body": user.display_name},
+                            "android": {"notification": {"channel_id": "calls", "sound": "default"}},
+                            "data": {"type": "call.offer", "conversation_id": conversation_id, "user_id": user.id},
+                        }, high_priority=True)
+                elif kind in ("call.answer", "call.hangup", "call.decline"):
+                    await db.execute(update(CallOffer).where(CallOffer.conversation_id == conversation_id, CallOffer.consumed.is_(False)).values(consumed=True))
+                    await db.commit()
             elif kind == "ping": await websocket.send_json({"type": "pong"})
             else: await websocket.send_json({"type": "error", "detail": "Unsupported event"})
     except WebSocketDisconnect:

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "201637854178",
+    "project_id": "xyteee-b0b95",
+    "storage_bucket": "xyteee-b0b95.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:201637854178:android:aaeefbc4b114465817d7bb",
+        "android_client_info": {
+          "package_name": "com.xyteee.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCdxx4aBnTkq5YE3OG7F2Q2el4gukc_27w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

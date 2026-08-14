@@ -1,26 +1,70 @@
 {
   "expo": {
     "name": "XYTEEE",
-    "slug": "xyteee-mobile",
+    "slug": "xyteee",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "scheme": "xyteee",
     "userInterfaceStyle": "automatic",
+    "backgroundColor": "#0F1520",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.xyteee.app"
+      "bundleIdentifier": "com.xyteee.app",
+      "icon": "./assets/icon.png",
+      "bitcode": false
     },
     "android": {
-      "package": "com.xyteee.app"
+      "package": "com.xyteee.app",
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.CAMERA",
+        "android.permission.INTERNET",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WAKE_LOCK",
+        "android.permission.BLUETOOTH"
+      ]
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-notifications",
-      "expo-audio"
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "messages"
+        }
+      ],
+      "expo-audio",
+      "@config-plugins/react-native-webrtc",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0F1520"
+        }
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f27608b1-2550-4ba3-96ed-94ee791ec17c"
+      }
+    },
+    "owner": "xyteeee"
   }
 }

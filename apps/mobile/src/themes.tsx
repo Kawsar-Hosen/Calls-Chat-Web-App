@@ -74,6 +74,31 @@ export const THEMES: ChatTheme[] = [
     bubbleIn: 'rgba(255,255,255,0.93)', bubbleText: '#14141F', mine: '#D4AF37', mineText: '#2E2400', accent: '#D4AF37', sender: '#D4AF37',
     time: '#AFA9B8', text: '#F0EEF5', border: 'rgba(212,175,55,0.4)', wallpaper: 'rgba(212,175,55,0.10)', decor: [{ icon: '💎', color: 'rgba(212,175,55,0.30)', size: 46, top: '12%', left: '76%' }, { icon: '◆', color: 'rgba(212,175,55,0.18)', size: 26, top: '38%', left: '10%' }, { icon: '✦', color: 'rgba(212,175,55,0.20)', size: 22, top: '66%', left: '86%' }],
   },
+  {
+    id: 'candy', name: 'Candy Pop', gradient: ['#FFD6EA', '#CDEFFF'], header: '#F9B8DD', headerText: '#4A1533',
+    bubbleIn: 'rgba(255,255,255,0.95)', bubbleText: '#43203A', mine: '#FF4D9D', mineText: '#FFFFFF', accent: '#FF4D9D', sender: '#D81B78',
+    time: '#B06A96', text: '#43203A', border: 'rgba(255,77,157,0.22)', wallpaper: 'rgba(255,77,157,0.10)', decor: [{ icon: '🍬', color: 'rgba(255,77,157,0.30)', size: 44, top: '12%', left: '8%' }, { icon: '🍭', color: 'rgba(216,27,120,0.22)', size: 40, top: '54%', left: '84%' }, { icon: '🍫', color: 'rgba(255,77,157,0.20)', size: 32, top: '32%', left: '72%' }],
+  },
+  {
+    id: 'mint', name: 'Minty Fresh', gradient: ['#DFF7EC', '#B9EDDD'], header: '#C2ECDD', headerText: '#0E3D31',
+    bubbleIn: 'rgba(255,255,255,0.95)', bubbleText: '#0E3D31', mine: '#12B886', mineText: '#FFFFFF', accent: '#0F9D6E', sender: '#0B7A5B',
+    time: '#6FA392', text: '#0E3D31', border: 'rgba(18,184,134,0.22)', wallpaper: 'rgba(18,184,134,0.10)', decor: [{ icon: '🌿', color: 'rgba(15,157,110,0.28)', size: 44, top: '10%', left: '8%' }, { icon: '🍃', color: 'rgba(15,157,110,0.20)', size: 36, top: '54%', left: '84%' }, { icon: '💧', color: 'rgba(18,184,134,0.24)', size: 30, top: '32%', left: '70%' }],
+  },
+  {
+    id: 'peach', name: 'Peach Cream', gradient: ['#FFF0DE', '#FFD3A5'], header: '#FFD3A0', headerText: '#5A3012',
+    bubbleIn: 'rgba(255,255,255,0.95)', bubbleText: '#5A3012', mine: '#FF8C42', mineText: '#FFFFFF', accent: '#F76707', sender: '#C85A00',
+    time: '#B0805A', text: '#5A3012', border: 'rgba(247,103,7,0.22)', wallpaper: 'rgba(247,103,7,0.10)', decor: [{ icon: '🍑', color: 'rgba(247,103,7,0.26)', size: 46, top: '12%', left: '8%' }, { icon: '🧡', color: 'rgba(255,140,66,0.22)', size: 36, top: '56%', left: '86%' }, { icon: '🍊', color: 'rgba(247,103,7,0.20)', size: 32, top: '34%', left: '72%' }],
+  },
+  {
+    id: 'galaxy', name: 'Galaxy', gradient: ['#0F0B2B', '#2A1B5E', '#5B3E96'], header: '#241553', headerText: '#EFE9FF',
+    bubbleIn: 'rgba(255,255,255,0.95)', bubbleText: '#201248', mine: '#A78BFA', mineText: '#1E1240', accent: '#C4B5FD', sender: '#D8C9FF',
+    time: '#A79FCE', text: '#EFE9FF', border: 'rgba(196,181,253,0.35)', wallpaper: 'rgba(196,181,253,0.12)', decor: [{ icon: '🪐', color: 'rgba(196,181,253,0.28)', size: 50, top: '10%', left: '74%' }, { icon: '🌠', color: 'rgba(255,255,255,0.30)', size: 26, top: '22%', left: '18%' }, { icon: '✨', color: 'rgba(255,255,255,0.30)', size: 24, top: '60%', left: '10%' }, { icon: '⭐', color: 'rgba(255,255,255,0.22)', size: 20, top: '76%', left: '86%' }],
+  },
+  {
+    id: 'sky', name: 'Sky Day', gradient: ['#DDF2FF', '#9BD3FF'], header: '#B8E2FF', headerText: '#123C66',
+    bubbleIn: 'rgba(255,255,255,0.96)', bubbleText: '#123C66', mine: '#2196F3', mineText: '#FFFFFF', accent: '#1976D2', sender: '#1565C0',
+    time: '#6E9EC9', text: '#123C66', border: 'rgba(25,118,210,0.22)', wallpaper: 'rgba(25,118,210,0.10)', decor: [{ icon: '☀️', color: 'rgba(255,183,77,0.9)', size: 42, top: '8%', left: '78%' }, { icon: '☁️', color: 'rgba(255,255,255,0.85)', size: 44, top: '14%', left: '8%' }, { icon: '🕊️', color: 'rgba(25,118,210,0.25)', size: 34, top: '36%', left: '64%' }, { icon: '🌤️', color: 'rgba(255,255,255,0.9)', size: 46, top: '60%', left: '84%' }],
+  },
 ];
 
 export interface FontDef {
@@ -106,6 +131,9 @@ export const WALLPAPERS: WallpaperDef[] = [
   { id: 'bubbles', name: 'Bubbles' },
   { id: 'confetti', name: 'Confetti' },
   { id: 'stripes', name: 'Stripes' },
+  { id: 'hearts', name: 'Hearts' },
+  { id: 'leaves', name: 'Leaves' },
+  { id: 'stars', name: 'Stars' },
 ];
 
 export interface BubbleStyleDef {
@@ -119,6 +147,10 @@ export const BUBBLE_STYLES: BubbleStyleDef[] = [
   { id: 'box', name: 'Box' },
   { id: 'outline', name: 'Outline' },
   { id: 'soft', name: 'Soft' },
+  { id: 'flat', name: 'Flat' },
+  { id: 'crisp', name: 'Crisp' },
+  { id: 'glass', name: 'Frosted' },
+  { id: 'edge', name: 'Accent bar' },
 ];
 
 export interface DensityDef {
@@ -135,10 +167,14 @@ export const DENSITIES: DensityDef[] = [
 ];
 
 export const RADIUS_OPTIONS: { value: number; name: string }[] = [
+  { value: 2, name: 'Micro' },
   { value: 4, name: 'Sharp' },
+  { value: 6, name: 'Gentle' },
   { value: 8, name: 'Soft' },
+  { value: 12, name: 'Comfy' },
   { value: 14, name: 'Round' },
   { value: 20, name: 'Extra round' },
+  { value: 28, name: 'Super round' },
 ];
 
 export interface SoundOption {
@@ -156,7 +192,7 @@ export const SOUND_OPTIONS: SoundOption[] = [
 ];
 
 export const DEFAULT_CUSTOMIZATION: GroupCustomization = { theme: 'default', font: 'default', wallpaper: 'plain', bubble: 'rounded', density: 'comfortable', radius: 8 };
-export const DEFAULT_CHAT_PREFS: ChatPrefs = { showTimestamps: true, showReceipts: true, showTyping: true, sound: 'default' };
+export const DEFAULT_CHAT_PREFS: ChatPrefs = { showTimestamps: true, showReceipts: true, showTyping: true, sound: 'default', sendSound: 'default', notifSound: 'default' };
 
 export function themeById(id: string): ChatTheme {
   return THEMES.find((theme) => theme.id === id) ?? THEMES[0]!;
@@ -187,11 +223,23 @@ export function bubbleLook(customization: GroupCustomization, theme: ChatTheme, 
   let radius = customization.radius;
   if (style === 'pill') radius = 22;
   if (style === 'box') radius = 0;
-  const background = style === 'outline' ? 'transparent' : mine ? theme.mine : theme.bubbleIn;
+  const background = style === 'outline' ? 'transparent' : style === 'glass' && !mine ? 'rgba(255,255,255,0.55)' : mine ? theme.mine : theme.bubbleIn;
   const textColor = mine ? theme.mineText : theme.bubbleText;
-  const borderColor = style === 'outline' ? (mine ? theme.mine : theme.accent) : mine ? theme.mine : theme.border;
-  const borderWidth = style === 'outline' ? 1.5 : StyleSheet.hairlineWidth;
-  return { radius, background, textColor, borderColor, borderWidth };
+  const borderColor = style === 'outline' || style === 'crisp' ? (mine ? theme.mine : theme.accent) : style === 'flat' ? 'transparent' : mine ? theme.mine : theme.border;
+  const borderWidth = style === 'outline' ? 1.5 : style === 'crisp' ? 2 : style === 'flat' ? 0 : StyleSheet.hairlineWidth;
+  const extraStyle: Record<string, unknown> = {};
+  if (style === 'edge') {
+    extraStyle.borderLeftWidth = 4;
+    extraStyle.borderLeftColor = mine ? 'rgba(255,255,255,0.9)' : theme.accent;
+  }
+  if (style === 'glass' || style === 'edge') {
+    extraStyle.shadowColor = '#000000';
+    extraStyle.shadowOpacity = 0.12;
+    extraStyle.shadowRadius = 5;
+    extraStyle.shadowOffset = { width: 0, height: 2 };
+    extraStyle.elevation = 2;
+  }
+  return { radius, background, textColor, borderColor, borderWidth, extraStyle };
 }
 
 export function bubbleFont(customization: GroupCustomization): string | undefined {
@@ -224,6 +272,21 @@ export function WallpaperLayer({ kind, color }: { kind: string; color: string })
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {([[6, 12], [14, 62], [26, 30], [34, 84], [48, 16], [58, 70], [72, 34], [84, 64], [90, 8], [66, 90]] as [number, number][]).map(([top, left], index) => (
           <View key={index} style={[base, { top: `${top}%`, left: `${left}%`, width: 12, height: 12, backgroundColor: color, transform: [{ rotate: `${index * 37}deg` }] }]} />
+        ))}
+      </View>
+    );
+  }
+  if (kind === 'hearts' || kind === 'leaves' || kind === 'stars') {
+    const emoji = kind === 'hearts' ? '💖' : kind === 'leaves' ? '🍃' : '✨';
+    const spots: [number, number, number][] = kind === 'hearts'
+      ? [[8, 12, 26], [18, 68, 20], [32, 34, 22], [46, 82, 18], [58, 18, 24], [70, 58, 20], [82, 30, 22], [90, 78, 18]]
+      : kind === 'leaves'
+        ? [[10, 16, 26], [22, 72, 22], [38, 40, 24], [54, 84, 20], [66, 14, 24], [80, 52, 20], [90, 82, 22], [30, 90, 18]]
+        : [[6, 20, 22], [16, 78, 18], [30, 10, 24], [44, 66, 20], [58, 86, 18], [70, 30, 22], [84, 60, 20], [92, 16, 18]];
+    return (
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {spots.map(([top, left, size], index) => (
+          <Text key={index} style={[base, { top: `${top}%`, left: `${left}%`, fontSize: size, opacity: index % 2 === 0 ? 0.55 : 0.4 }]}>{emoji}</Text>
         ))}
       </View>
     );

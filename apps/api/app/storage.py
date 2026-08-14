@@ -1,3 +1,4 @@
+import asyncio
 import io
 import uuid
 from abc import ABC, abstractmethod
@@ -37,9 +38,27 @@ def square_avatar(data: bytes, content_type: str) -> bytes:
     return out.getvalue()
 
 
+async def _prepare(upload: UploadFile, *, avatar: bool) -> tuple[str, bytes, str]:
+    content_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
+    suffix = ALLOWED_FILES.get(content_type)
+    if not suffix:
+        raise HTTPException(status_code=415, detail="Unsupported file type")
+    data = await upload.read(settings.max_upload_bytes + 1)
+    if len(data) > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail="File too large")
+    if avatar and content_type in AVATAR_TYPES:
+        data = square_avatar(data, content_type)
+        suffix = ".jpg"
+    name = f"{uuid.uuid4()}{suffix}"
+    return name, data, content_type
+
+
 class Storage(ABC):
     @abstractmethod
     async def save(self, upload: UploadFile, *, avatar: bool = False) -> str: ...
+
+    @abstractmethod
+    async def delete(self, url: str | None) -> None: ...
 
 
 class LocalStorage(Storage):
@@ -47,27 +66,118 @@ class LocalStorage(Storage):
         self.root = Path(root)
 
     async def save(self, upload: UploadFile, *, avatar: bool = False) -> str:
-        content_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
-        suffix = ALLOWED_FILES.get(content_type)
-        if not suffix:
-            raise HTTPException(status_code=415, detail="Unsupported file type")
-        data = await upload.read(settings.max_upload_bytes + 1)
-        if len(data) > settings.max_upload_bytes:
-            raise HTTPException(status_code=413, detail="File too large")
+        name, data, _content_type = await _prepare(upload, avatar=avatar)
         self.root.mkdir(parents=True, exist_ok=True)
-        if avatar and content_type in AVATAR_TYPES:
-            data = square_avatar(data, content_type)
-            suffix = ".jpg"
-        name = f"{uuid.uuid4()}{suffix}"
         (self.root / name).write_bytes(data)
         return f"/uploads/{name}"
 
+    async def delete(self, url: str | None) -> None:
+        if not url or not url.startswith("/uploads/"):
+            return
+        try:
+            (self.root / url.removeprefix("/uploads/")).unlink(missing_ok=True)
+        except OSError:
+            pass
 
-class ExternalStorage(Storage):
-    """Contract for S3-compatible/cloud implementations supplied at deployment."""
+
+class R2Storage(Storage):
+    """Cloudflare R2 via the S3-compatible API."""
+
+    def __init__(
+        self,
+        *,
+        endpoint: str,
+        bucket: str,
+        access_key: str,
+        secret_key: str,
+        public_url: str,
+        region: str = "auto",
+        cors_origins: list[str] | None = None,
+    ) -> None:
+        self.bucket = bucket
+        self.public_url = (public_url or "").strip()
+        if self.public_url and not self.public_url.startswith(("http://", "https://")):
+            self.public_url = f"https://{self.public_url}"
+        self.public_url = self.public_url.rstrip("/")
+        self.cors_origins = cors_origins or []
+        self._endpoint = endpoint.rstrip("/")
+        self._credentials = (access_key, secret_key)
+        self._region = region
+        self._client: object | None = None
+
+    def _make_client(self):
+        import boto3
+
+        return boto3.client(
+            "s3",
+            endpoint_url=self._endpoint,
+            region_name=self._region,
+            aws_access_key_id=self._credentials[0],
+            aws_secret_access_key=self._credentials[1],
+        )
+
+    def _ensure_client(self):
+        if self._client is None:
+            self._client = self._make_client()
+            self._set_cors()
+        return self._client
+
+    def _set_cors(self) -> None:
+        if not self.cors_origins:
+            return
+        try:
+            self._client.put_bucket_cors(  # type: ignore[attr-defined]
+                Bucket=self.bucket,
+                CORSConfiguration={
+                    "CORSRules": [{
+                        "AllowedOrigins": self.cors_origins,
+                        "AllowedMethods": ["GET", "HEAD"],
+                        "AllowedHeaders": ["*"],
+                        "MaxAgeSeconds": 3600,
+                    }]
+                },
+            )
+        except Exception:
+            # Best-effort; CORS can also be configured in the R2 dashboard.
+            pass
 
     async def save(self, upload: UploadFile, *, avatar: bool = False) -> str:
-        raise NotImplementedError("Configure an external Storage implementation")
+        name, data, content_type = await _prepare(upload, avatar=avatar)
+        client = self._ensure_client()
+        await asyncio.to_thread(
+            client.put_object,  # type: ignore[attr-defined]
+            Bucket=self.bucket,
+            Key=name,
+            Body=data,
+            ContentType=content_type,
+        )
+        return f"{self.public_url}/{name}"
+
+    async def delete(self, url: str | None) -> None:
+        if not url or not self.public_url or not url.startswith(self.public_url):
+            return
+        key = url[len(self.public_url) + 1:]
+        if not key:
+            return
+        try:
+            client = self._ensure_client()
+            await asyncio.to_thread(client.delete_object, Bucket=self.bucket, Key=key)  # type: ignore[attr-defined]
+        except Exception:
+            pass
 
 
-storage: Storage = LocalStorage(settings.upload_dir)
+def build_storage() -> Storage:
+    if settings.storage_backend == "r2":
+        return R2Storage(
+            endpoint=settings.storage_endpoint,
+            bucket=settings.storage_bucket,
+            access_key=settings.storage_access_key,
+            secret_key=settings.storage_secret_key,
+            public_url=settings.storage_public_url,
+            region=settings.storage_region,
+            cors_origins=settings.cors_origins,
+        )
+    return LocalStorage(settings.upload_dir)
+
+
+storage: Storage = build_storage()

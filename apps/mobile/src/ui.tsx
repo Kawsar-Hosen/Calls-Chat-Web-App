@@ -107,5 +107,5 @@ const styles = StyleSheet.create({
   title: { fontSize: 27, fontWeight: '700' },
   error: { borderLeftWidth: 3, paddingLeft: 10, fontSize: 13, lineHeight: 18 },
   skeletonList: { paddingVertical: 6 }, skeletonRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 }, skeletonLines: { flex: 1, gap: 9 },
-  skeletonChat: { padding: 18, gap: 18 }, skeletonBubbleRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 }, skeletonBubbleRowMine: { flexDirection: 'row-reverse' },
+  skeletonChat: { flex: 1, padding: 18, gap: 18, overflow: 'hidden' }, skeletonBubbleRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 }, skeletonBubbleRowMine: { flexDirection: 'row-reverse' },
 });

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type PropsWithChildren } from 'react';
 import { api, clearTokens, getTokens } from './api';
+import { registerDeviceToken } from './notifications';
 import type { User } from './types';
 
 interface AuthContextValue {
@@ -7,6 +8,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (data: { displayName: string; username: string; email: string; password: string }) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: { displayName?: string; username?: string; bio?: string; avatarUrl?: string | null; email?: string; phoneCode?: string | null; phone?: string | null }) => Promise<void>;
   uploadAvatar: (uri: string, onProgress?: (pct: number) => void) => Promise<void>;
@@ -21,7 +23,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     void (async () => {
       try {
-        if (await getTokens()) setUser(await api.me());
+        if (await getTokens()) {
+          setUser(await api.me());
+          void registerDeviceToken();
+        }
       } catch {
         await clearTokens();
       } finally {
@@ -34,8 +39,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
     <AuthContext.Provider value={{
       user,
       loading,
-      login: async (email, password) => setUser((await api.login(email, password)).user),
-      register: async (data) => setUser((await api.register(data)).user),
+      login: async (email, password) => {
+        const result = await api.login(email, password);
+        setUser(result.user);
+        void registerDeviceToken();
+      },
+      register: async (data) => {
+        const result = await api.register(data);
+        setUser(result.user);
+        void registerDeviceToken();
+      },
+      loginWithGoogle: async (idToken) => {
+        const result = await api.googleSignIn(idToken);
+        setUser(result.user);
+        void registerDeviceToken();
+      },
       logout: async () => {
         await api.logout().catch(clearTokens);
         setUser(null);

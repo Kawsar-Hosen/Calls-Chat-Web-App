@@ -228,6 +228,15 @@ export const api = {
     await saveTokens(result);
     return result;
   },
+  async googleSignIn(idToken: string): Promise<AuthResult> {
+    const raw = await request<Json>('/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ id_token: idToken, device_name: 'XYTEEE mobile' }),
+    });
+    const result = { ...mapTokens(raw), user: mapUser(raw.user as Json) };
+    await saveTokens(result);
+    return result;
+  },
   async me() {
     return mapUser(await request<Json>('/profile'));
   },
@@ -237,6 +246,12 @@ export const api = {
     } finally {
       await clearTokens();
     }
+  },
+  async requestAccountDeletion(password: string): Promise<{ message: string; email_masked: string }> {
+    return request<{ message: string; email_masked: string }>('/account/delete/request', { method: 'POST', body: JSON.stringify({ password }) });
+  },
+  async deleteAccount(password: string, code: string): Promise<void> {
+    await request<void>('/account', { method: 'DELETE', body: JSON.stringify({ password, code }) });
   },
   async updateProfile(data: { displayName?: string; username?: string; bio?: string; avatarUrl?: string | null; email?: string; phoneCode?: string | null; phone?: string | null }) {
     const body: Record<string, unknown> = {};
@@ -313,8 +328,9 @@ export const api = {
       ...(row.last_message ? { lastMessage: mapMessage(row.last_message as Json) } : {}),
     };
   },
-  async messages(conversationId: string): Promise<{ items: Message[]; nextCursor: string | null }> {
-    const raw = await request<Json>(`/conversations/${conversationId}/messages`);
+  async messages(conversationId: string, before?: string | null, limit = 100): Promise<{ items: Message[]; nextCursor: string | null }> {
+    const query = `limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`;
+    const raw = await request<Json>(`/conversations/${conversationId}/messages?${query}`);
     return {
       items: ((raw.items ?? []) as Json[]).map(mapMessage),
       nextCursor: raw.next_cursor ? String(raw.next_cursor) : null,
@@ -360,6 +376,12 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ push_token: pushToken, platform }),
   }),
+  turnCredentials: () => request<{ iceServers: { urls: string[]; username: string; credential: string }[] }>('/calls/turn', {
+    method: 'POST',
+  }),
+  pendingCall: () => request<{ conversation_id: string; caller_id: string; sdp: string } | null>('/calls/pending', {
+    method: 'GET',
+  }),
   async searchUsers(query: string, field: 'username' | 'email' | 'number' = 'username'): Promise<UserSearchResult[]> {
     return extractItems(await request<unknown>(`/users/search?q=${encodeURIComponent(query)}&field=${field}`)).map((raw) => {
       const user = mapUser(raw);
@@ -367,6 +389,7 @@ export const api = {
         ...user,
         isFriend: raw.is_friend === true,
         requestStatus: raw.request_status ? String(raw.request_status) as 'outgoing' | 'incoming' : null,
+        requestId: raw.request_id ? String(raw.request_id) : null,
         isBlocked: raw.is_blocked === true,
       };
     });
@@ -378,6 +401,7 @@ export const api = {
       ...user,
       isFriend: raw.is_friend === true,
       requestStatus: raw.request_status ? String(raw.request_status) as 'outgoing' | 'incoming' : null,
+      requestId: raw.request_id ? String(raw.request_id) : null,
       isBlocked: raw.is_blocked === true,
     };
   },

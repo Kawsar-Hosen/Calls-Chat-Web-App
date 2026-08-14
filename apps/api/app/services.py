@@ -85,7 +85,7 @@ async def message_view(db: AsyncSession, message: Message) -> MessageView:
     attachments = (
         await db.scalars(select(MediaAttachment).where(MediaAttachment.message_id == message.id).order_by(MediaAttachment.created_at))
     ).all()
-    read_by_count = int((await db.scalar(select(func.count(MessageRead.id)).where(MessageRead.message_id == message.id))) or 0)
+    read_by_count = int((await db.scalar(select(func.count(MessageRead.id)).where(MessageRead.message_id == message.id, MessageRead.user_id != message.sender_id))) or 0)
     return MessageView.model_validate(message).model_copy(
         update={
             "reactions": [ReactionView.model_validate(item) for item in reactions],

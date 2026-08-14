@@ -55,7 +55,7 @@ export default function AddMembersScreen() {
               const active = selected.has(friend.id);
               return (
                 <Pressable key={friend.id} onPress={() => toggle(friend.id)} style={({ pressed }) => [styles.tile, { backgroundColor: active ? colors.accentSoft : colors.surface, borderColor: active ? colors.accent : colors.border, opacity: pressed ? 0.8 : 1 }]}>
-                  <Avatar name={friend.displayName} size={40} online={friend.isOnline} />
+                  <Avatar name={friend.displayName} uri={friend.avatarUrl ?? null} size={40} online={friend.isOnline} />
                   <Text numberOfLines={1} style={[styles.tileName, { color: colors.text }]}>{friend.displayName}</Text>
                   <Text numberOfLines={1} style={[styles.tileHandle, { color: colors.muted }]}>@{friend.username}</Text>
                   {active ? <MaterialCommunityIcons name="check-circle" size={18} color={colors.accent} /> : null}

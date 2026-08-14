@@ -19,7 +19,7 @@ interface ChatMetaState {
   prefs: Record<string, import('@/types').ChatPrefs>;
 }
 
-export const DEFAULT_CHAT_PREFS = { showTimestamps: true, showReceipts: true, showTyping: true, sound: 'default' };
+export const DEFAULT_CHAT_PREFS = { showTimestamps: true, showReceipts: true, showTyping: true, sound: 'default', sendSound: 'default', notifSound: 'default' };
 
 const STORAGE_KEY = 'chat-meta-v2';
 let state: ChatMetaState = { pinned: {}, unread: {}, reminders: {}, muted: {}, prefs: {} };

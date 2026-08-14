@@ -62,6 +62,10 @@ export interface ChatPrefs {
   showReceipts: boolean;
   showTyping: boolean;
   sound: string;
+  customization?: GroupCustomization | null;
+  nickname?: string | null;
+  sendSound?: string | null;
+  notifSound?: string | null;
 }
 
 export interface Group {
@@ -98,6 +102,7 @@ export interface FriendRequest {
 export interface UserSearchResult extends User {
   isFriend: boolean;
   requestStatus: 'outgoing' | 'incoming' | null;
+  requestId?: string | null;
   isBlocked: boolean;
 }
 
@@ -146,4 +151,12 @@ export type SocketEvent =
   | { type: 'group.deleted'; groupId: string }
   | { type: 'group.member.removed'; groupId: string; userId: string }
   | { type: 'group.member.added'; groupId: string; userId: string }
+  | { type: 'friend.request.accepted'; requesterId: string; recipientId: string }
+  | { type: 'friend.request.received'; requesterId: string; recipientId: string }
+  | { type: 'friend.request.cancelled'; requesterId: string; recipientId: string }
+  | { type: 'friend.request.rejected'; requesterId: string; recipientId: string }
+  | { type: 'call.offer'; conversationId: string; userId: string; sdp?: string }
+  | { type: 'call.answer'; conversationId: string; userId: string; sdp?: string }
+  | { type: 'call.ice'; conversationId: string; userId: string; candidate?: unknown }
+  | { type: 'call.hangup' | 'call.decline'; conversationId: string; userId: string }
   | { type: 'connected' | 'disconnected' };

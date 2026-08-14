@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ export default function CreateGroupScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
+  const { preselect } = useLocalSearchParams<{ preselect?: string }>();
   const [friends, setFriends] = useState<User[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [name, setName] = useState('');
@@ -25,6 +26,10 @@ export default function CreateGroupScreen() {
     if (!user) return;
     api.friends().then(setFriends).catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to load friends')).finally(() => setLoading(false));
   }, [user]);
+
+  useEffect(() => {
+    if (preselect) setSelected(new Set([preselect]));
+  }, [preselect]);
 
   if (!user) return null;
 
@@ -62,7 +67,7 @@ export default function CreateGroupScreen() {
               const active = selected.has(friend.id);
               return (
                 <Pressable key={friend.id} onPress={() => toggle(friend.id)} style={({ pressed }) => [styles.tile, { backgroundColor: active ? colors.accentSoft : colors.surface, borderColor: active ? colors.accent : colors.border, opacity: pressed ? 0.8 : 1 }]}>
-                  <Avatar name={friend.displayName} size={40} online={friend.isOnline} />
+                  <Avatar name={friend.displayName} uri={friend.avatarUrl ?? null} size={40} online={friend.isOnline} />
                   <Text numberOfLines={1} style={[styles.tileName, { color: colors.text }]}>{friend.displayName}</Text>
                   <Text numberOfLines={1} style={[styles.tileHandle, { color: colors.muted }]}>@{friend.username}</Text>
                   {active ? <MaterialCommunityIcons name="check-circle" size={18} color={colors.accent} /> : null}

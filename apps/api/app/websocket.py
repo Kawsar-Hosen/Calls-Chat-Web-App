@@ -33,5 +33,12 @@ class ConnectionManager:
             if user_id != exclude:
                 await self.send_user(user_id, event)
 
+    async def disconnect_user(self, user_id: str) -> None:
+        for socket in self.connections.pop(user_id, set()):
+            try:
+                await socket.close()
+            except Exception:
+                pass
+
 
 manager = ConnectionManager()

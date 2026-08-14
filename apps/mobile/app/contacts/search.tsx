@@ -5,6 +5,8 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import { useI18n } from '@/i18n';
+import { soundSettings } from '@/sound-settings';
+import { playSound } from '@/sounds';
 import { useTheme } from '@/theme';
 import type { UserSearchResult } from '@/types';
 import { Avatar, SkeletonList } from '@/ui';
@@ -19,7 +21,7 @@ const MODES: { mode: Mode; icon: 'phone-outline' | 'account-outline' | 'email-ou
 
 export default function SearchPeopleScreen() {
   const { colors } = useTheme();
-  const { t } = useI18n();
+  const { t, isRTL } = useI18n();
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('number');
   const [query, setQuery] = useState('');
@@ -51,7 +53,7 @@ export default function SearchPeopleScreen() {
     setBusyId(person.id); setError('');
     try {
       const conversationId = await api.startDirectChat(person.id);
-      router.push({ pathname: '/chat/[id]', params: { id: conversationId, name: person.displayName, username: person.username } });
+      router.push({ pathname: '/chat/[id]', params: { id: conversationId, name: person.displayName, username: person.username, peerId: person.id, avatarUrl: person.avatarUrl ?? '' } });
     } catch (reason) { setError(reason instanceof Error ? reason.message : t('unableOpenChat')); }
     finally { setBusyId(null); }
   }, [router, t]);
@@ -60,8 +62,19 @@ export default function SearchPeopleScreen() {
     setBusyId(person.id); setError('');
     try {
       await api.sendFriendRequest(person.id);
+      if (person.requestStatus === 'incoming') { if (soundSettings().acceptSound) playSound('acceptFriend'); } else if (soundSettings().requestSound) playSound('friendRequest');
       setResults((items) => items.map((item) => item.id === person.id ? { ...item, isFriend: item.requestStatus === 'incoming', requestStatus: item.requestStatus === 'incoming' ? null : 'outgoing' } : item));
     } catch (reason) { setError(reason instanceof Error ? reason.message : t('requestFailed')); }
+    finally { setBusyId(null); }
+  }, [t]);
+
+  const cancelRequest = useCallback(async (person: UserSearchResult) => {
+    if (!person.requestId) return;
+    setBusyId(person.id); setError('');
+    try {
+      await api.cancelFriendRequest(person.requestId);
+      setResults((items) => items.map((item) => item.id === person.id ? { ...item, requestStatus: null, requestId: null } : item));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('couldNotCancel')); }
     finally { setBusyId(null); }
   }, [t]);
 
@@ -93,20 +106,20 @@ export default function SearchPeopleScreen() {
           );
         })}
       </View>
-      <Text style={[styles.hint, { color: colors.muted }]}>{t(current.hintKey)}</Text>
+      <Text style={[styles.hint, { color: colors.muted, textAlign: isRTL ? 'right' : 'left' }]}>{t(current.hintKey)}</Text>
 
       <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
         {error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
         {loading ? <SkeletonList rows={5} /> : null}
-        {!loading && queryTooShort ? <View style={styles.state}><MaterialCommunityIcons name="keyboard-outline" size={38} color={colors.faint} /><Text style={[styles.stateText, { color: colors.muted }]}>{t('searchMinChars')}</Text></View> : null}
-        {!loading && query.trim().length >= 2 && results.length === 0 && !error ? <View style={styles.state}><MaterialCommunityIcons name="account-search-outline" size={38} color={colors.faint} /><Text style={[styles.stateText, { color: colors.muted }]}>{t('searchNoResults')}</Text></View> : null}
+        {!loading && queryTooShort ? <View style={styles.state}><View style={[styles.stateIcon, { backgroundColor: colors.elevated }]}><MaterialCommunityIcons name="keyboard-outline" size={34} color={colors.muted} /></View><Text style={[styles.stateText, { color: colors.muted }]}>{t('searchMinChars')}</Text></View> : null}
+        {!loading && query.trim().length >= 2 && results.length === 0 && !error ? <View style={styles.state}><View style={[styles.stateIcon, { backgroundColor: colors.elevated }]}><MaterialCommunityIcons name="account-search-outline" size={34} color={colors.muted} /></View><Text style={[styles.stateText, { color: colors.muted }]}>{t('searchNoResults')}</Text></View> : null}
 
         {results.map((person) => (
           <Pressable key={person.id} onPress={() => openProfile(person)} style={({ pressed }) => [styles.row, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}>
-            <Avatar name={person.displayName} size={46} online={person.isOnline} />
+            <Avatar name={person.displayName} uri={person.avatarUrl ?? null} size={46} online={person.isOnline} />
             <View style={styles.rowCopy}>
-              <Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>{person.displayName}</Text>
-              <Text numberOfLines={1} style={[styles.handle, { color: colors.muted }]}>@{person.username}</Text>
+              <Text numberOfLines={1} style={[styles.name, { color: colors.text, textAlign: isRTL ? 'right' : 'left' }]}>{person.displayName}</Text>
+              <Text numberOfLines={1} style={[styles.handle, { color: colors.muted, textAlign: isRTL ? 'right' : 'left' }]}>@{person.username}</Text>
               {mode === 'number' && (person.phoneCode || person.phone) ? <Text numberOfLines={1} style={[styles.phone, { color: colors.accent }]}><MaterialCommunityIcons name="cellphone" size={11} color={colors.accent} /> {person.phoneCode}{person.phone}</Text> : null}
             </View>
             {person.isBlocked ? <View style={[styles.pill, { backgroundColor: colors.danger }]}><Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>{t('blocked')}</Text></View>
@@ -116,7 +129,10 @@ export default function SearchPeopleScreen() {
                     {busyId === person.id ? <ActivityIndicator size="small" color={colors.accent} /> : <MaterialCommunityIcons name="message-text-outline" size={19} color={colors.accent} />}
                   </Pressable>
                   {person.isFriend ? <View style={[styles.pill, { backgroundColor: colors.accentSoft }]}><MaterialCommunityIcons name="check" size={12} color={colors.accent} /><Text style={{ color: colors.accent, fontSize: 11, fontWeight: '800' }}>{t('friend')}</Text></View>
-                    : person.requestStatus === 'outgoing' ? <View style={[styles.pill, { backgroundColor: colors.elevated }]}><MaterialCommunityIcons name="clock-outline" size={12} color={colors.muted} /><Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800' }}>{t('requested')}</Text></View>
+                    : person.requestStatus === 'outgoing' ? <Pressable hitSlop={8} disabled={busyId === person.id} onPress={() => void cancelRequest(person)} style={({ pressed }) => [styles.pill, { backgroundColor: colors.elevated, opacity: pressed ? 0.6 : 1 }]}>
+                        {busyId === person.id ? <ActivityIndicator size="small" color={colors.muted} /> : <MaterialCommunityIcons name="close" size={12} color={colors.muted} />}
+                        <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800' }}>{t('cancel')}</Text>
+                      </Pressable>
                       : <Pressable accessibilityLabel={person.requestStatus === 'incoming' ? t('acceptFriendRequest') : t('addFriend')} hitSlop={8} disabled={busyId === person.id} onPress={() => void sendRequest(person)} style={({ pressed }) => [styles.iconBtn, { backgroundColor: colors.accent, opacity: busyId === person.id ? 0.5 : pressed ? 0.75 : 1 }]}>
                         {busyId === person.id ? <ActivityIndicator size="small" color={colors.accentText} /> : <MaterialCommunityIcons name={person.requestStatus === 'incoming' ? 'check' : 'account-plus-outline'} size={20} color={colors.accentText} />}
                       </Pressable>}
@@ -131,10 +147,10 @@ export default function SearchPeopleScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 }, header: { height: 56, borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }, iconButton: { width: 38, height: 42, alignItems: 'center', justifyContent: 'center' }, headerTitle: { fontSize: 16, fontWeight: '800', flex: 1 },
-  search: { height: 48, marginHorizontal: 16, marginTop: 12, borderWidth: 1, borderRadius: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13, gap: 9 }, searchInput: { flex: 1, fontSize: 15 }, clearBtn: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  segments: { marginHorizontal: 16, marginTop: 12, flexDirection: 'row', borderRadius: 12, borderWidth: 1, padding: 4 }, segment: { flex: 1, height: 40, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }, segmentLabel: { fontSize: 13 },
+  search: { height: 48, marginHorizontal: 16, marginTop: 12, borderWidth: 1, borderRadius: 14, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13, gap: 9 }, searchInput: { flex: 1, fontSize: 15 }, clearBtn: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  segments: { marginHorizontal: 16, marginTop: 12, flexDirection: 'row', borderRadius: 14, borderWidth: 1, padding: 4 }, segment: { flex: 1, height: 40, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }, segmentLabel: { fontSize: 13 },
   hint: { fontSize: 12, marginHorizontal: 18, marginTop: 9, marginBottom: 4 },
-  list: { padding: 16, paddingBottom: 40 }, error: { fontSize: 13, marginBottom: 8 }, state: { alignItems: 'center', paddingTop: 60, gap: 10 }, stateText: { fontSize: 13, textAlign: 'center' },
-  row: { minHeight: 70, borderWidth: 1, borderRadius: 12, marginBottom: 9, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 11 }, rowCopy: { flex: 1, minWidth: 0 }, name: { fontSize: 15, fontWeight: '800' }, handle: { fontSize: 12, marginTop: 2 }, phone: { fontSize: 12, marginTop: 2, fontWeight: '700' },
-  iconBtn: { width: 36, height: 36, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }, pill: { borderRadius: 6, paddingHorizontal: 9, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  list: { padding: 16, paddingBottom: 40 }, error: { fontSize: 13, marginBottom: 8 }, state: { alignItems: 'center', paddingTop: 56, gap: 12 }, stateIcon: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }, stateText: { fontSize: 13, textAlign: 'center' },
+  row: { minHeight: 72, borderWidth: 1, borderRadius: 16, marginBottom: 10, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, rowCopy: { flex: 1, minWidth: 0 }, name: { fontSize: 15, fontWeight: '800' }, handle: { fontSize: 12, marginTop: 2 }, phone: { fontSize: 12, marginTop: 2, fontWeight: '700' },
+  iconBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, pill: { borderRadius: 20, paddingHorizontal: 11, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 4 },
 });

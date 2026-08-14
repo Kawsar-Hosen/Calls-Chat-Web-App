@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useRef, useState, type PropsWithC
 import { AppState } from 'react-native';
 import { getTokens, mapMessage, WS_URL } from './api';
 import { useAuth } from './auth';
+import { soundSettings } from './sound-settings';
+import { playSound } from './sounds';
 import type { SocketEvent } from './types';
 
 type Listener = (event: SocketEvent) => void;
@@ -56,6 +58,17 @@ export function SocketProvider({ children }: PropsWithChildren) {
             emit({ type, groupId: String(raw.group_id) });
           } else if (type === 'group.member.removed' || type === 'group.member.added') {
             emit({ type, groupId: String(raw.group_id), userId: String(raw.user_id) });
+          } else if (type === 'friend.request.accepted') {
+            if (soundSettings().acceptSound) playSound('acceptFriend');
+            emit({ type, requesterId: String(raw.requester_id ?? ''), recipientId: String(raw.recipient_id ?? '') });
+          } else if (type === 'friend.request.received' || type === 'friend.request.cancelled' || type === 'friend.request.rejected') {
+            emit({ type, requesterId: String(raw.requester_id ?? ''), recipientId: String(raw.recipient_id ?? '') });
+          } else if (type === 'call.offer' || type === 'call.answer') {
+            emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? ''), ...(raw.sdp ? { sdp: String(raw.sdp) } : {}) });
+          } else if (type === 'call.ice') {
+            emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? ''), ...(raw.candidate ? { candidate: raw.candidate } : {}) });
+          } else if (type === 'call.hangup' || type === 'call.decline') {
+            emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? '') });
           }
         } catch {
           // A malformed event should not interrupt the connection.

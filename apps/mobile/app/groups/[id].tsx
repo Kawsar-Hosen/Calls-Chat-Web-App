@@ -240,7 +240,7 @@ export default function GroupDetailScreen() {
           <ScrollView style={styles.adminsList}>
             {group.members.map((member) => (
               <View key={member.user.id} style={[styles.adminRow, { borderBottomColor: colors.border }]}>
-                <Avatar name={member.user.displayName} size={40} online={member.user.isOnline} />
+                <Avatar name={member.user.displayName} uri={member.user.avatarUrl ?? null} size={40} online={member.user.isOnline} />
                 <View style={styles.memberCopy}><Text numberOfLines={1} style={[styles.memberName, { color: colors.text }]}>{member.user.displayName}{member.user.id === user.id ? '  (you)' : ''}</Text><Text style={[styles.memberMeta, { color: colors.muted }]}>@{member.user.username}</Text></View>
                 {member.role === 'owner' ? <Text style={[styles.ownerTag, { color: colors.accent, backgroundColor: colors.accentSoft }]}>Owner</Text> : group.myRole === 'owner' ? (
                   <Switch value={member.role === 'admin'} onValueChange={(value) => void changeRole(member, value ? 'admin' : 'member')} trackColor={{ true: colors.accent, false: colors.border }} thumbColor={member.role === 'admin' ? colors.accentText : colors.muted} />
@@ -324,7 +324,7 @@ export default function GroupDetailScreen() {
           ) : null}
           {group.members.map((member) => (
             <View key={member.user.id} style={[styles.memberRow, { borderBottomColor: colors.border }]}>
-              <Avatar name={member.user.displayName} size={42} online={member.user.isOnline} />
+              <Avatar name={member.user.displayName} uri={member.user.avatarUrl ?? null} size={42} online={member.user.isOnline} />
               <View style={styles.memberCopy}>
                 <Text numberOfLines={1} style={[styles.memberName, { color: colors.text }]}>{member.user.displayName}{member.user.id === user.id ? '  (you)' : ''}</Text>
                 <Text numberOfLines={1} style={[styles.memberMeta, { color: colors.muted }]}>@{member.user.username} · {member.role}</Text>
@@ -347,7 +347,7 @@ export default function GroupDetailScreen() {
             <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               {applications.map((application) => (
                 <View key={application.id} style={[styles.memberRow, { borderBottomColor: colors.border }]}>
-                  <Avatar name={application.applicant.displayName} size={42} />
+                  <Avatar name={application.applicant.displayName} uri={application.applicant.avatarUrl ?? null} size={42} />
                   <View style={styles.memberCopy}><Text numberOfLines={1} style={[styles.memberName, { color: colors.text }]}>{application.applicant.displayName}</Text><Text numberOfLines={1} style={[styles.memberMeta, { color: colors.muted }]}>@{application.applicant.username}</Text></View>
                   <View style={styles.actions}>
                     <Pressable onPress={() => void respond(application, true)} style={({ pressed }) => [styles.acceptBtn, { backgroundColor: colors.accent, opacity: pressed ? 0.75 : 1 }]}><MaterialCommunityIcons name="check" size={17} color={colors.accentText} /></Pressable>
@@ -361,7 +361,7 @@ export default function GroupDetailScreen() {
 
         <Text style={[styles.sectionLabel, { color: colors.muted }]}>OPTIONS</Text>
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Pressable onPress={() => router.push({ pathname: '/groups/customize', params: { id: group.id, name: group.name } })} style={({ pressed }) => [styles.row, { borderBottomColor: colors.border, opacity: pressed ? 0.6 : 1 }]}><MaterialCommunityIcons name="palette-outline" size={21} color={colors.accent} /><Text style={[styles.rowText, { color: colors.text }]}>Customize chat</Text><Text style={[styles.soonTag, { color: colors.faint }]}>THEME · FONT · WALLPAPER</Text></Pressable>
+          <Pressable onPress={() => router.push({ pathname: '/chat/customize', params: { id: group.conversationId, groupId: group.id, name: group.name } })} style={({ pressed }) => [styles.row, { borderBottomColor: colors.border, opacity: pressed ? 0.6 : 1 }]}><MaterialCommunityIcons name="palette-outline" size={21} color={colors.accent} /><Text style={[styles.rowText, { color: colors.text }]}>Customize chat</Text><Text style={[styles.soonTag, { color: colors.faint }]}>THEME · FONT · WALLPAPER</Text></Pressable>
           <Pressable disabled style={({ pressed }) => [styles.row, { borderBottomColor: colors.border, opacity: pressed ? 0.6 : 0.45 }]}><MaterialCommunityIcons name="link-variant" size={21} color={colors.muted} /><Text style={[styles.rowText, { color: colors.muted }]}>Invite link / Share group link</Text><Text style={[styles.soonTag, { color: colors.faint }]}>SOON</Text></Pressable>
           {group.myRole === 'owner' ? (
             <Pressable onPress={() => setAdminsOpen(true)} style={({ pressed }) => [styles.row, { borderBottomColor: colors.border, opacity: pressed ? 0.6 : 1 }]}><MaterialCommunityIcons name="crown-outline" size={21} color={colors.accent} /><Text style={[styles.rowText, { color: colors.text }]}>Manage admins</Text><MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} /></Pressable>

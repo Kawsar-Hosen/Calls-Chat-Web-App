@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Literal
 
@@ -28,6 +30,7 @@ class UserMe(UserPublic):
 class UserSearchResult(UserPublic):
     is_friend: bool = False
     request_status: str | None = None
+    request_id: str | None = None
     is_blocked: bool = False
     phone_code: str | None = None
     phone: str | None = None
@@ -60,6 +63,11 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
+    device_name: str = Field(default="Unknown device", max_length=120)
+
+
+class GoogleAuthRequest(BaseModel):
+    id_token: str = Field(min_length=20)
     device_name: str = Field(default="Unknown device", max_length=120)
 
 
@@ -281,3 +289,17 @@ class GiphyMediaCreate(BaseModel):
 class DeviceCreate(BaseModel):
     push_token: str = Field(min_length=10, max_length=500)
     platform: str = Field(pattern=r"^(ios|android|web)$")
+
+
+class DeletionCodeRequest(BaseModel):
+    password: str
+
+
+class DeletionCodeSent(BaseModel):
+    message: str
+    email_masked: str
+
+
+class DeleteAccountRequest(BaseModel):
+    password: str
+    code: str = Field(pattern=r"^\d{6}$")

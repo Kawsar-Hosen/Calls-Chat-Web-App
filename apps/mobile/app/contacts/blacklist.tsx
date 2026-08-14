@@ -47,12 +47,12 @@ export default function BlacklistScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={items.length ? styles.list : styles.emptyList}
           refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent} onRefresh={() => { setRefreshing(true); void load(true); }} />}
-          ListEmptyComponent={<View style={styles.empty}><MaterialCommunityIcons name="shield-off-outline" size={40} color={colors.faint} /><Text style={[styles.emptyTitle, { color: colors.text }]}>{error ? t('couldNotLoadBlacklist') : t('blacklistEmpty')}</Text><Text style={[styles.emptyCopy, { color: error ? colors.danger : colors.muted }]}>{error || t('blacklistEmptyCopy')}</Text></View>}
+          ListEmptyComponent={<View style={styles.empty}><View style={[styles.emptyIcon, { backgroundColor: colors.elevated }]}><MaterialCommunityIcons name="shield-off-outline" size={34} color={colors.muted} /></View><Text style={[styles.emptyTitle, { color: colors.text }]}>{error ? t('couldNotLoadBlacklist') : t('blacklistEmpty')}</Text><Text style={[styles.emptyCopy, { color: error ? colors.danger : colors.muted }]}>{error || t('blacklistEmptyCopy')}</Text></View>}
           renderItem={({ item }) => (
-            <View style={[styles.row, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-              <Avatar name={item.displayName} size={46} />
+            <View style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Avatar name={item.displayName} uri={item.avatarUrl ?? null} size={46} />
               <View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>{item.displayName}</Text><Text numberOfLines={1} style={[styles.handle, { color: colors.muted }]}>@{item.username}</Text></View>
-              <Pressable onPress={() => void unblock(item)} style={({ pressed }) => [styles.unblock, { borderColor: colors.border, opacity: pressed ? 0.6 : 1 }]}><Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>{t('unblock')}</Text></Pressable>
+              <Pressable onPress={() => void unblock(item)} style={({ pressed }) => [styles.unblock, { backgroundColor: colors.accentSoft, opacity: pressed ? 0.6 : 1 }]}><MaterialCommunityIcons name="shield-off-outline" size={14} color={colors.accent} /><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '800' }}>{t('unblock')}</Text></Pressable>
             </View>
           )}
         />
@@ -63,8 +63,8 @@ export default function BlacklistScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 }, header: { height: 56, borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }, iconButton: { width: 38, height: 42, alignItems: 'center', justifyContent: 'center' }, headerTitle: { fontSize: 16, fontWeight: '800' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' }, list: { paddingHorizontal: 16, paddingTop: 6 }, emptyList: { flexGrow: 1 },
-  row: { minHeight: 68, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, rowCopy: { flex: 1, minWidth: 0 }, name: { fontSize: 15, fontWeight: '800' }, handle: { fontSize: 12, marginTop: 3 },
-  unblock: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 13, paddingVertical: 8 },
-  empty: { flex: 1, minHeight: 360, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }, emptyTitle: { fontSize: 16, fontWeight: '800', marginTop: 14 }, emptyCopy: { fontSize: 13, textAlign: 'center', marginTop: 6, lineHeight: 20 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' }, list: { paddingHorizontal: 16, paddingTop: 10 }, emptyList: { flexGrow: 1 },
+  row: { minHeight: 70, borderWidth: 1, borderRadius: 16, marginBottom: 10, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, rowCopy: { flex: 1, minWidth: 0 }, name: { fontSize: 15, fontWeight: '800' }, handle: { fontSize: 12, marginTop: 3 },
+  unblock: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  empty: { flex: 1, minHeight: 360, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }, emptyIcon: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }, emptyTitle: { fontSize: 16, fontWeight: '800', marginTop: 14 }, emptyCopy: { fontSize: 13, textAlign: 'center', marginTop: 6, lineHeight: 20 },
 });
