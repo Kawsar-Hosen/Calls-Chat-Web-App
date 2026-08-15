@@ -915,7 +915,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                     if offline:
                         await push_to_users(db, offline, {
                             "notification": {"title": "Incoming call", "body": user.display_name},
-                            "android": {"notification": {"channel_id": "calls", "category_id": "call"}},
+                            "android": {"notification": {"channel_id": "calls"}},
                             "data": {"type": "call.offer", "conversation_id": conversation_id, "user_id": user.id, "kind": offer_kind, "categoryId": "call"},
                         }, high_priority=True)
                 elif kind in ("call.answer", "call.hangup", "call.decline"):
