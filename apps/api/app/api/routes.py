@@ -66,7 +66,7 @@ async def push_friend_request(db: AsyncSession, requester: User, recipient_id: s
     if offline:
         await push_to_users(db, offline, {
             "notification": {"title": "Friend request", "body": f"{requester.display_name} sent you a friend request"},
-            "android": {"notification": {"channel_id": "messages", "sound": "default"}},
+            "android": {"notification": {"channel_id": "messages"}},
             "data": {"type": "friend.request.received", "requester_id": requester.id, "recipient_id": recipient_id},
         })
 
@@ -410,7 +410,7 @@ async def send_request(data: FriendRequestCreate, user: User = Depends(get_curre
                 if offline:
                     await push_to_users(db, offline, {
                         "notification": {"title": "Friend request accepted", "body": f"{user.display_name} accepted your friend request"},
-                        "android": {"notification": {"channel_id": "messages", "sound": "default"}},
+                        "android": {"notification": {"channel_id": "messages"}},
                         "data": {"type": "friend.request.accepted", "requester_id": data.user_id, "recipient_id": user.id},
                     })
                 return existing
@@ -453,7 +453,7 @@ async def request_action(request_id: str, action: str, user: User = Depends(get_
         if offline:
             await push_to_users(db, offline, {
                 "notification": {"title": "Friend request accepted", "body": f"{user.display_name} accepted your friend request"},
-                "android": {"notification": {"channel_id": "messages", "sound": "default"}},
+                "android": {"notification": {"channel_id": "messages"}},
                 "data": {"type": "friend.request.accepted", "requester_id": item.requester_id, "recipient_id": item.recipient_id},
             })
     elif action == "cancel" and item.requester_id == user.id:
@@ -604,7 +604,7 @@ async def send_message(conversation_id: str, data: MessageCreate, user: User = D
             body = preview
         await push_to_users(db, offline, {
             "notification": {"title": title, "body": body},
-            "android": {"notification": {"channel_id": "messages", "sound": "default"}},
+            "android": {"notification": {"channel_id": "messages"}},
             "data": {"type": "message", "conversation_id": conversation_id, "message_id": item.id},
         })
     return result
@@ -910,7 +910,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                     if offline:
                         await push_to_users(db, offline, {
                             "notification": {"title": "Incoming call", "body": user.display_name},
-                            "android": {"notification": {"channel_id": "calls", "sound": "default"}},
+                            "android": {"notification": {"channel_id": "calls"}},
                             "data": {"type": "call.offer", "conversation_id": conversation_id, "user_id": user.id},
                         }, high_priority=True)
                 elif kind in ("call.answer", "call.hangup", "call.decline"):

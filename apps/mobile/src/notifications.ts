@@ -20,7 +20,6 @@ export async function registerForPushNotifications(): Promise<string | null> {
         name: 'Calls',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 120, 250],
-        sound: 'default',
       });
     }
 
