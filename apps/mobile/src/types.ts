@@ -155,7 +155,7 @@ export type SocketEvent =
   | { type: 'friend.request.received'; requesterId: string; recipientId: string }
   | { type: 'friend.request.cancelled'; requesterId: string; recipientId: string }
   | { type: 'friend.request.rejected'; requesterId: string; recipientId: string }
-  | { type: 'call.offer'; conversationId: string; userId: string; sdp?: string }
+  | { type: 'call.offer'; conversationId: string; userId: string; sdp?: string; kind?: 'audio' | 'video' }
   | { type: 'call.answer'; conversationId: string; userId: string; sdp?: string }
   | { type: 'call.ice'; conversationId: string; userId: string; candidate?: unknown }
   | { type: 'call.hangup' | 'call.decline'; conversationId: string; userId: string }

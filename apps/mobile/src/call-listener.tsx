@@ -1,11 +1,11 @@
-import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { useSocket } from '@/socket';
+import { useCallController } from '@/call-controller';
 import { isOnCall, storePendingOffer } from '@/calls';
 
 export function CallListener() {
   const { subscribe } = useSocket();
-  const router = useRouter();
+  const { startCall } = useCallController();
   const handled = useRef(new Set<string>());
 
   useEffect(() => {
@@ -17,9 +17,14 @@ export function CallListener() {
       if (isOnCall()) return;
       if (!event.sdp) return;
       storePendingOffer({ conversationId: event.conversationId, callerId: event.userId, sdp: event.sdp });
-      router.push({ pathname: '/call', params: { incoming: '1', id: event.conversationId, peerId: event.userId } });
+      startCall({
+        type: event.kind ?? 'audio',
+        incoming: true,
+        conversationId: event.conversationId,
+        peerId: event.userId,
+      });
     });
-  }, [subscribe, router]);
+  }, [subscribe, startCall]);
 
   return null;
 }

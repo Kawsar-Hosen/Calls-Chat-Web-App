@@ -63,12 +63,6 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
   const iceBuffer = useRef<RTCIceCandidate[]>([]);
   const endedRef = useRef(false);
 
-  useEffect(() => {
-    if (phase !== 'active') return;
-    const interval = setInterval(() => setSeconds((value) => value + 1), 1000);
-    return () => clearInterval(interval);
-  }, [phase]);
-
   const endLocal = useCallback(() => {
     if (endedRef.current) return;
     endedRef.current = true;
@@ -81,7 +75,18 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
   }, []);
 
   useEffect(() => {
+    if (!conversationId || !peerId) return;
     activeCallConversation = conversationId;
+    endedRef.current = false;
+    remoteDescSet.current = false;
+    iceBuffer.current = [];
+    setPhase('ringing');
+    setSeconds(0);
+    setMuted(false);
+    setSpeaker(true);
+    setVideoOn(kind === 'video');
+    setLocalStream(null);
+    setRemoteStream(null);
     let disposed = false;
 
     const flushIce = () => {
@@ -203,7 +208,7 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
   }, [conversationId, peerId, kind, incoming, endLocal]);
 
   const answer = useCallback(() => {
-    if (!pcRef.current) return;
+    if (!conversationId || !pcRef.current) return;
     void (async () => {
       try {
         const answerDescription = await pcRef.current?.createAnswer();
@@ -214,11 +219,13 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
   }, [conversationId, send]);
 
   const decline = useCallback(() => {
+    if (!conversationId) return;
     try { send({ type: 'call.decline', conversation_id: conversationId }); } catch { /* ignore */ }
     endLocal();
   }, [conversationId, send, endLocal]);
 
   const hangUp = useCallback(() => {
+    if (!conversationId) return;
     if (!endedRef.current) {
       try { send({ type: 'call.hangup', conversation_id: conversationId }); } catch { /* ignore */ }
     }

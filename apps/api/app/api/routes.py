@@ -674,7 +674,7 @@ async def pending_call(user: User = Depends(get_current_user), db: AsyncSession 
         return None
     offer.consumed = True
     await db.commit()
-    return {"conversation_id": offer.conversation_id, "caller_id": offer.caller_id, "sdp": offer.sdp}
+    return {"conversation_id": offer.conversation_id, "caller_id": offer.caller_id, "sdp": offer.sdp, "kind": offer.kind}
 
 
 @router.get("/messages/search", response_model=list[MessageView])
@@ -899,19 +899,22 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                 relay: dict = {"type": kind, "conversation_id": conversation_id, "user_id": user.id}
                 if kind in ("call.offer", "call.answer"):
                     relay["sdp"] = event.get("sdp")
+                    if kind == "call.offer":
+                        relay["kind"] = event.get("kind") or "audio"
                 elif kind == "call.ice":
                     relay["candidate"] = event.get("candidate")
                 members = await member_ids(db, conversation_id)
                 await manager.send_users(members, relay, exclude=user.id)
                 if kind == "call.offer":
-                    db.add(CallOffer(conversation_id=conversation_id, caller_id=user.id, sdp=event.get("sdp") or ""))
+                    offer_kind = event.get("kind") or "audio"
+                    db.add(CallOffer(conversation_id=conversation_id, caller_id=user.id, sdp=event.get("sdp") or "", kind=offer_kind))
                     await db.commit()
                     offline = offline_recipients(members, user.id)
                     if offline:
                         await push_to_users(db, offline, {
                             "notification": {"title": "Incoming call", "body": user.display_name},
-                            "android": {"notification": {"channel_id": "calls"}},
-                            "data": {"type": "call.offer", "conversation_id": conversation_id, "user_id": user.id},
+                            "android": {"notification": {"channel_id": "calls", "category_id": "call"}},
+                            "data": {"type": "call.offer", "conversation_id": conversation_id, "user_id": user.id, "kind": offer_kind, "categoryId": "call"},
                         }, high_priority=True)
                 elif kind in ("call.answer", "call.hangup", "call.decline"):
                     await db.execute(update(CallOffer).where(CallOffer.conversation_id == conversation_id, CallOffer.consumed.is_(False)).values(consumed=True))

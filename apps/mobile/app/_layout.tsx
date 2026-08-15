@@ -7,6 +7,7 @@ import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/auth';
 import { SocketProvider } from '@/socket';
+import { CallProvider } from '@/call-controller';
 import { CallListener } from '@/call-listener';
 import { PushListener } from '@/push-listener';
 import { ThemeProvider, useTheme } from '@/theme';
@@ -42,7 +43,6 @@ function Navigator() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="chat/[id]" />
-        <Stack.Screen name="call" options={{ animation: 'fade' }} />
       </Stack>
       <CallListener />
       <PushListener />
@@ -56,7 +56,11 @@ export default function RootLayout() {
       <ThemeProvider>
         <I18nProvider>
           <AuthProvider>
-            <SocketProvider><Navigator /></SocketProvider>
+            <SocketProvider>
+              <CallProvider>
+                <Navigator />
+              </CallProvider>
+            </SocketProvider>
           </AuthProvider>
         </I18nProvider>
       </ThemeProvider>

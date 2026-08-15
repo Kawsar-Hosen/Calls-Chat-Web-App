@@ -64,7 +64,7 @@ export function SocketProvider({ children }: PropsWithChildren) {
           } else if (type === 'friend.request.received' || type === 'friend.request.cancelled' || type === 'friend.request.rejected') {
             emit({ type, requesterId: String(raw.requester_id ?? ''), recipientId: String(raw.recipient_id ?? '') });
           } else if (type === 'call.offer' || type === 'call.answer') {
-            emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? ''), ...(raw.sdp ? { sdp: String(raw.sdp) } : {}) });
+            emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? ''), ...(raw.sdp ? { sdp: String(raw.sdp) } : {}), ...(type === 'call.offer' && raw.kind ? { kind: String(raw.kind) as 'audio' | 'video' } : {}) });
           } else if (type === 'call.ice') {
             emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? ''), ...(raw.candidate ? { candidate: raw.candidate } : {}) });
           } else if (type === 'call.hangup' || type === 'call.decline') {

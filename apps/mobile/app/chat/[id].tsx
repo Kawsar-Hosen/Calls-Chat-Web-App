@@ -10,6 +10,7 @@ import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Linking, Moda
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, mapGroup } from '@/api';
 import { useAuth } from '@/auth';
+import { useCallController } from '@/call-controller';
 import { useSocket } from '@/socket';
 import { useTheme } from '@/theme';
 import type { Group, Message, SocketEvent, User } from '@/types';
@@ -55,6 +56,7 @@ export default function ChatScreen() {
   const { colors } = useTheme();
   const { t, isRTL } = useI18n();
   const { subscribe, send: wsSend } = useSocket();
+  const { startCall } = useCallController();
   const router = useRouter();
   const listRef = useRef<FlatList<Message>>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -536,8 +538,8 @@ export default function ChatScreen() {
             <View style={styles.identity}><Text numberOfLines={1} style={[styles.headerName, { color: hText, fontFamily }]}>{name}</Text><Text style={[styles.presence, { color: presenceColor }]}>{presenceLine}</Text></View>
           </Pressable>
           {!isGroup ? <>
-            <Pressable accessibilityLabel="Audio call" hitSlop={10} onPress={() => peerId ? router.push({ pathname: '/call', params: { type: 'audio', id: params.id, peerId, name, username: params.username ?? '', avatarUrl: peerAvatar ?? '' } }) : undefined} style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.5 : 1 }]}><MaterialCommunityIcons name="phone" size={21} color={hText} /></Pressable>
-            <Pressable accessibilityLabel="Video call" hitSlop={10} onPress={() => peerId ? router.push({ pathname: '/call', params: { type: 'video', id: params.id, peerId, name, username: params.username ?? '', avatarUrl: peerAvatar ?? '' } }) : undefined} style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.5 : 1 }]}><MaterialCommunityIcons name="video" size={23} color={hText} /></Pressable>
+            <Pressable accessibilityLabel="Audio call" hitSlop={10} onPress={() => peerId ? startCall({ type: 'audio', conversationId: params.id, peerId, name, username: params.username ?? '', avatarUrl: peerAvatar ?? '' }) : undefined} style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.5 : 1 }]}><MaterialCommunityIcons name="phone" size={21} color={hText} /></Pressable>
+            <Pressable accessibilityLabel="Video call" hitSlop={10} onPress={() => peerId ? startCall({ type: 'video', conversationId: params.id, peerId, name, username: params.username ?? '', avatarUrl: peerAvatar ?? '' }) : undefined} style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.5 : 1 }]}><MaterialCommunityIcons name="video" size={23} color={hText} /></Pressable>
           </> : null}
           <Pressable accessibilityLabel="Chat settings" hitSlop={10} onPress={() => router.push({ pathname: '/chat/settings', params: { id: params.id, name, username: params.username ?? '', groupId: params.groupId ?? '', groupName: params.groupName ?? '', peerId: peerId ?? '', avatarUrl: peerAvatar ?? '' } })} style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.5 : 1 }]}><MaterialCommunityIcons name="dots-vertical" size={23} color={hText} /></Pressable>
         </View>

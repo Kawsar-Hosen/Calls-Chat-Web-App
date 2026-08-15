@@ -168,6 +168,7 @@ class CallOffer(Base):
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
     caller_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     sdp: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(String(8), default="audio")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     consumed: Mapped[bool] = mapped_column(default=False)
 
