@@ -67,8 +67,10 @@ export function SocketProvider({ children }: PropsWithChildren) {
             emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? ''), ...(raw.sdp ? { sdp: String(raw.sdp) } : {}), ...(type === 'call.offer' && raw.kind ? { kind: String(raw.kind) as 'audio' | 'video' } : {}) });
           } else if (type === 'call.ice') {
             emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? ''), ...(raw.candidate ? { candidate: raw.candidate } : {}) });
-          } else if (type === 'call.hangup' || type === 'call.decline') {
+          } else if (type === 'call.hangup') {
             emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? '') });
+          } else if (type === 'call.decline') {
+            emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? ''), ...(raw.reason ? { reason: String(raw.reason) as 'busy' | 'missed' | 'no-answer' | 'declined' } : {}) });
           }
         } catch {
           // A malformed event should not interrupt the connection.

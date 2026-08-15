@@ -43,7 +43,7 @@ export function PushListener() {
           if (requestId) void Notifications.dismissNotificationAsync(requestId).catch(() => undefined);
           return;
         }
-        if (actionId === ANSWER_ACTION || isOnCall()) return;
+        if (isOnCall()) return;
         const kind = data.kind === 'video' ? 'video' : 'audio';
         startCall({
           type: kind,

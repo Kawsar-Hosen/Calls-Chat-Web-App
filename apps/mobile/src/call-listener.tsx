@@ -4,7 +4,7 @@ import { useCallController } from '@/call-controller';
 import { isOnCall, storePendingOffer } from '@/calls';
 
 export function CallListener() {
-  const { subscribe } = useSocket();
+  const { subscribe, send } = useSocket();
   const { startCall } = useCallController();
   const handled = useRef(new Set<string>());
 
@@ -14,9 +14,12 @@ export function CallListener() {
       const key = `${event.conversationId}:${event.userId}:${(event.sdp ?? '').slice(0, 32)}`;
       if (handled.current.has(key)) return;
       handled.current.add(key);
-      if (isOnCall()) return;
+      if (isOnCall()) {
+        try { send({ type: 'call.decline', conversation_id: event.conversationId, reason: 'busy' }); } catch { /* ignore */ }
+        return;
+      }
       if (!event.sdp) return;
-      storePendingOffer({ conversationId: event.conversationId, callerId: event.userId, sdp: event.sdp });
+      storePendingOffer({ conversationId: event.conversationId, callerId: event.userId, sdp: event.sdp, kind: event.kind ?? 'audio' });
       startCall({
         type: event.kind ?? 'audio',
         incoming: true,
@@ -24,7 +27,7 @@ export function CallListener() {
         peerId: event.userId,
       });
     });
-  }, [subscribe, startCall]);
+  }, [subscribe, startCall, send]);
 
   return null;
 }

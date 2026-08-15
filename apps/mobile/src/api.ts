@@ -379,7 +379,7 @@ export const api = {
   turnCredentials: () => request<{ iceServers: { urls: string[]; username: string; credential: string }[] }>('/calls/turn', {
     method: 'POST',
   }),
-  pendingCall: () => request<{ conversation_id: string; caller_id: string; sdp: string } | null>('/calls/pending', {
+  pendingCall: () => request<{ conversation_id: string; caller_id: string; sdp: string; kind?: string } | null>('/calls/pending', {
     method: 'GET',
   }),
   async searchUsers(query: string, field: 'username' | 'email' | 'number' = 'username'): Promise<UserSearchResult[]> {

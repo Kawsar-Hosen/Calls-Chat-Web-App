@@ -5,6 +5,7 @@ import { useSocket } from '@/socket';
 
 export type CallKind = 'audio' | 'video';
 export type CallPhase = 'ringing' | 'active' | 'ended';
+export type CallEndReason = 'self' | 'remote' | 'declined' | 'busy' | 'missed' | 'no-answer' | 'failed';
 
 let activeCallConversation: string | null = null;
 
@@ -16,6 +17,7 @@ export interface PendingOffer {
   conversationId: string;
   callerId: string;
   sdp: string;
+  kind: CallKind;
 }
 
 let pendingOffer: PendingOffer | null = null;
@@ -32,6 +34,7 @@ export function takePendingOffer(conversationId: string): PendingOffer | null {
 
 export interface CallSession {
   phase: CallPhase;
+  endReason: CallEndReason | null;
   seconds: number;
   muted: boolean;
   speaker: boolean;
@@ -47,9 +50,12 @@ export interface CallSession {
   flipCamera: () => void;
 }
 
+const RING_TIMEOUT_MS = 45_000;
+
 export function useCallSession(conversationId: string, peerId: string, kind: CallKind, incoming: boolean): CallSession {
   const { subscribe, send } = useSocket();
   const [phase, setPhase] = useState<CallPhase>('ringing');
+  const [endReason, setEndReason] = useState<CallEndReason | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [muted, setMuted] = useState(false);
   const [speaker, setSpeaker] = useState(true);
@@ -62,11 +68,15 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
   const remoteDescSet = useRef(false);
   const iceBuffer = useRef<RTCIceCandidate[]>([]);
   const endedRef = useRef(false);
+  const startedAtRef = useRef(0);
+  const activeAtRef = useRef<number | null>(null);
 
-  const endLocal = useCallback(() => {
+  const endLocal = useCallback((reason: CallEndReason) => {
     if (endedRef.current) return;
     endedRef.current = true;
+    activeAtRef.current = null;
     setPhase('ended');
+    setEndReason(reason);
     try { pcRef.current?.close(); } catch { /* ignore */ }
     pcRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -80,7 +90,10 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
     endedRef.current = false;
     remoteDescSet.current = false;
     iceBuffer.current = [];
+    startedAtRef.current = 0;
+    activeAtRef.current = null;
     setPhase('ringing');
+    setEndReason(null);
     setSeconds(0);
     setMuted(false);
     setSpeaker(true);
@@ -88,6 +101,16 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
     setLocalStream(null);
     setRemoteStream(null);
     let disposed = false;
+
+    const markActive = () => {
+      if (endedRef.current || disposed) return;
+      if (activeAtRef.current == null) {
+        activeAtRef.current = Date.now();
+        startedAtRef.current = Date.now();
+        setSeconds(0);
+      }
+      setPhase('active');
+    };
 
     const flushIce = () => {
       if (!pcRef.current || !remoteDescSet.current) return;
@@ -116,11 +139,18 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
       pc.ontrack = (event: any) => {
         const stream = event.streams[0] as MediaStream | undefined;
         if (stream) setRemoteStream(stream);
+        markActive();
+      };
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') markActive();
+        if (pc.iceConnectionState === 'failed') {
+          if (!disposed && activeAtRef.current != null) endLocal('failed');
+        }
       };
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'connected') setPhase('active');
-        if (pc.connectionState === 'failed' || pc.connectionState === 'closed' || pc.connectionState === 'disconnected') {
-          if (!disposed) endLocal();
+        if (pc.connectionState === 'connected') markActive();
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+          if (!disposed && activeAtRef.current != null) endLocal('failed');
         }
       };
 
@@ -131,7 +161,7 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
           video: kind === 'video' ? { facingMode: 'user', width: 640, height: 480 } : false,
         });
       } catch {
-        if (!disposed) endLocal();
+        if (!disposed) endLocal('failed');
         return;
       }
       if (disposed) {
@@ -146,7 +176,7 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
         try {
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
-          send({ type: 'call.offer', conversation_id: conversationId, sdp: offer.sdp ?? '' });
+          send({ type: 'call.offer', conversation_id: conversationId, sdp: offer.sdp ?? '', kind });
         } catch { /* ignore */ }
       } else {
         let pending = takePendingOffer(conversationId);
@@ -154,7 +184,7 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
           try {
             const fetched = await api.pendingCall();
             if (fetched && fetched.conversation_id === conversationId) {
-              pending = { conversationId: fetched.conversation_id, callerId: fetched.caller_id, sdp: fetched.sdp };
+              pending = { conversationId: fetched.conversation_id, callerId: fetched.caller_id, sdp: fetched.sdp, kind: (fetched.kind as CallKind | undefined) ?? 'audio' };
             }
           } catch { /* ignore */ }
         }
@@ -165,8 +195,8 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
             flushIce();
           } catch { /* ignore */ }
         } else if (!disposed) {
-          try { send({ type: 'call.decline', conversation_id: conversationId }); } catch { /* ignore */ }
-          endLocal();
+          try { send({ type: 'call.decline', conversation_id: conversationId, reason: 'missed' }); } catch { /* ignore */ }
+          endLocal('missed');
         }
       }
     };
@@ -183,6 +213,7 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
             void pcRef.current?.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: event.sdp }));
           } catch { /* ignore */ }
           flushIce();
+          markActive();
         }
       } else if (event.type === 'call.ice') {
         const candidate = event.candidate as RTCIceCandidate;
@@ -191,8 +222,10 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
         } else {
           iceBuffer.current.push(candidate);
         }
-      } else if (event.type === 'call.hangup' || event.type === 'call.decline') {
-        if (!disposed) endLocal();
+      } else if (event.type === 'call.hangup') {
+        if (!disposed) endLocal(activeAtRef.current != null ? 'remote' : 'missed');
+      } else if (event.type === 'call.decline') {
+        if (!disposed) endLocal(event.reason === 'busy' ? 'busy' : (event.reason === 'no-answer' || event.reason === 'missed') ? 'no-answer' : 'declined');
       }
     });
 
@@ -207,8 +240,20 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
     };
   }, [conversationId, peerId, kind, incoming, endLocal]);
 
+  useEffect(() => {
+    if (phase !== 'active') return;
+    const tick = () => {
+      if (activeAtRef.current != null) {
+        setSeconds(Math.max(0, Math.floor((Date.now() - activeAtRef.current) / 1000)));
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 500);
+    return () => clearInterval(interval);
+  }, [phase]);
+
   const answer = useCallback(() => {
-    if (!conversationId || !pcRef.current) return;
+    if (!conversationId || !pcRef.current || endedRef.current) return;
     void (async () => {
       try {
         const answerDescription = await pcRef.current?.createAnswer();
@@ -219,17 +264,15 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
   }, [conversationId, send]);
 
   const decline = useCallback(() => {
-    if (!conversationId) return;
-    try { send({ type: 'call.decline', conversation_id: conversationId }); } catch { /* ignore */ }
-    endLocal();
+    if (!conversationId || endedRef.current) return;
+    try { send({ type: 'call.decline', conversation_id: conversationId, reason: 'declined' }); } catch { /* ignore */ }
+    endLocal('self');
   }, [conversationId, send, endLocal]);
 
   const hangUp = useCallback(() => {
-    if (!conversationId) return;
-    if (!endedRef.current) {
-      try { send({ type: 'call.hangup', conversation_id: conversationId }); } catch { /* ignore */ }
-    }
-    endLocal();
+    if (!conversationId || endedRef.current) return;
+    try { send({ type: 'call.hangup', conversation_id: conversationId }); } catch { /* ignore */ }
+    endLocal('self');
   }, [conversationId, send, endLocal]);
 
   const toggleMute = useCallback(() => {
@@ -282,11 +325,18 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
   useEffect(() => {
     if (phase !== 'ringing') return;
     const timer = setTimeout(() => {
-      if (incoming) decline();
-      else hangUp();
-    }, 45000);
+      if (incoming) {
+        if (!endedRef.current) {
+          try { send({ type: 'call.decline', conversation_id: conversationId, reason: 'missed' }); } catch { /* ignore */ }
+          endLocal('missed');
+        }
+      } else if (!endedRef.current) {
+        try { send({ type: 'call.hangup', conversation_id: conversationId }); } catch { /* ignore */ }
+        endLocal('no-answer');
+      }
+    }, RING_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [phase, incoming, decline, hangUp]);
+  }, [phase, incoming, conversationId, send, endLocal]);
 
-  return { phase, seconds, muted, speaker, videoOn, localStream, remoteStream, answer, decline, hangUp, toggleMute, toggleSpeaker, toggleVideo, flipCamera };
+  return { phase, endReason, seconds, muted, speaker, videoOn, localStream, remoteStream, answer, decline, hangUp, toggleMute, toggleSpeaker, toggleVideo, flipCamera };
 }

@@ -1,11 +1,11 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type PropsWithChildren } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RTCView } from 'react-native-webrtc';
 import { api } from '@/api';
-import { useCallSession, type CallKind, type CallSession } from '@/calls';
+import { useCallSession, type CallEndReason, type CallKind, type CallSession } from '@/calls';
 import { useI18n } from '@/i18n';
 import { playCallRingtone, stopCallRingtone } from '@/sounds';
 import { Avatar } from '@/ui';
@@ -42,6 +42,34 @@ function formatTime(total: number) {
   const minutes = Math.floor(total / 60);
   const remaining = total % 60;
   return `${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`;
+}
+
+const END_REASON_KEYS: Record<CallEndReason, string> = {
+  self: 'callEnded',
+  remote: 'callEnded',
+  declined: 'callDeclined',
+  busy: 'callBusy',
+  missed: 'callMissed',
+  'no-answer': 'callNoAnswer',
+  failed: 'callFailed',
+};
+
+function PulseRings() {
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.timing(progress, { toValue: 1, duration: 1800, useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [progress]);
+  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [1, 1.7] });
+  const opacity = progress.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] });
+  return (
+    <View style={styles.pulseWrap}>
+      {[0, 1].map((i) => (
+        <Animated.View key={i} style={[styles.pulseRing, { transform: [{ scale }], opacity, margin: -16 * (i + 1) * 0.9 }]} />
+      ))}
+    </View>
+  );
 }
 
 function CallOverlay({ request, session, peerName, peerAvatar, onMinimize }: {
@@ -86,7 +114,7 @@ function CallOverlay({ request, session, peerName, peerAvatar, onMinimize }: {
               <View style={styles.videoFallback}>
                 <View style={styles.videoAvatar}><Avatar name={peerName} uri={peerAvatar || null} size={120} /></View>
                 <Text style={styles.videoName}>{peerName || '…'}</Text>
-                <Text style={styles.videoHint}>{session.phase === 'ringing' ? (incoming ? t('incomingCall') : t('ringing')) : session.phase === 'active' ? formatTime(session.seconds) : t('connecting')}</Text>
+                <Text style={styles.videoHint}>{session.phase === 'ringing' ? (incoming ? t('incomingCall') : t('ringing')) : session.phase === 'active' ? formatTime(session.seconds) : session.phase === 'ended' ? t(END_REASON_KEYS[session.endReason ?? 'remote']) : t('connecting')}</Text>
               </View>
             ) : null}
             {localVisible ? (
@@ -101,7 +129,10 @@ function CallOverlay({ request, session, peerName, peerAvatar, onMinimize }: {
           </View>
         ) : (
           <View style={styles.audioBody}>
-            <View style={styles.avatarRing}><Avatar name={peerName} uri={peerAvatar || null} size={120} online /></View>
+            <View style={styles.avatarWrap}>
+              {incoming && session.phase === 'ringing' ? <PulseRings /> : null}
+              <View style={styles.avatarRing}><Avatar name={peerName} uri={peerAvatar || null} size={120} online /></View>
+            </View>
             <Text style={styles.name}>{peerName || '…'}</Text>
             {session.phase === 'ringing' ? (
               <View style={styles.ringing}><ActivityIndicator size="small" color="#9AA3FF" /><Text style={styles.status}>{incoming ? t('incomingCall') : t('ringing')}</Text></View>
@@ -113,7 +144,7 @@ function CallOverlay({ request, session, peerName, peerAvatar, onMinimize }: {
       </View>
 
       {session.phase === 'ended' ? (
-        <View style={styles.controls}><Text style={styles.endedText}>{t('callEnded')}</Text></View>
+        <View style={styles.controls}><Text style={styles.endedText}>{t(END_REASON_KEYS[session.endReason ?? 'remote'])}</Text>{session.seconds > 0 ? <Text style={styles.endedTime}>{formatTime(session.seconds)}</Text> : null}</View>
       ) : incoming && session.phase === 'ringing' ? (
         <View style={styles.controls}>
           <View style={styles.endRow}>
@@ -197,10 +228,14 @@ export function CallProvider({ children }: PropsWithChildren) {
   const session = useCallSession(request.conversationId, request.peerId, request.type, request.incoming === true);
 
   const startCall = useCallback((call: CallRequest) => {
+    if (active) {
+      if (active.conversationId === call.conversationId && active.incoming === call.incoming) return;
+      return;
+    }
     setActive(call);
     setMinimized(false);
     setPeerUser(null);
-  }, []);
+  }, [active]);
 
   const minimize = useCallback(() => setMinimized(true), []);
   const restore = useCallback(() => setMinimized(false), []);
@@ -264,7 +299,10 @@ const styles = StyleSheet.create({
   pipText: { position: 'absolute', bottom: 6, color: '#FFFFFF', fontSize: 10, fontWeight: '800', backgroundColor: 'rgba(0,0,0,0.45)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   ringingBadge: { position: 'absolute', bottom: 22, flexDirection: 'row', alignItems: 'center', gap: 8 },
   audioBody: { alignItems: 'center', gap: 14 },
-  avatarRing: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.25)', borderRadius: 999, padding: 4 },
+  avatarWrap: { alignItems: 'center', justifyContent: 'center' },
+  pulseWrap: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  pulseRing: { position: 'absolute', width: 120, height: 120, borderRadius: 60, borderWidth: 2, borderColor: '#22C55E', backgroundColor: 'rgba(34,197,94,0.08)' },
+  avatarRing: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.25)', borderRadius: 999, padding: 4, backgroundColor: 'rgba(0,0,0,0.3)' },
   name: { color: '#FFFFFF', fontSize: 26, fontWeight: '900', marginTop: 4 },
   ringing: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   status: { color: '#9AA3FF', fontSize: 15, fontWeight: '700' },
@@ -278,6 +316,7 @@ const styles = StyleSheet.create({
   declineBtn: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', shadowColor: '#EF4444', shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
   dialingHint: { color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '600' },
   endedText: { color: 'rgba(255,255,255,0.5)', fontSize: 15, fontWeight: '700' },
+  endedTime: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', letterSpacing: 1, fontVariant: ['tabular-nums'] },
   pill: { position: 'absolute', bottom: 24, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(20,24,60,0.96)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', borderRadius: 26, padding: 6, paddingRight: 16, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 12, zIndex: 1000 },
   pillAvatar: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   pillCopy: { maxWidth: 140 },

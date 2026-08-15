@@ -903,6 +903,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                         relay["kind"] = event.get("kind") or "audio"
                 elif kind == "call.ice":
                     relay["candidate"] = event.get("candidate")
+                elif kind == "call.decline":
+                    relay["reason"] = event.get("reason") or "declined"
                 members = await member_ids(db, conversation_id)
                 await manager.send_users(members, relay, exclude=user.id)
                 if kind == "call.offer":

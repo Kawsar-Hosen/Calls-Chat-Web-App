@@ -158,5 +158,6 @@ export type SocketEvent =
   | { type: 'call.offer'; conversationId: string; userId: string; sdp?: string; kind?: 'audio' | 'video' }
   | { type: 'call.answer'; conversationId: string; userId: string; sdp?: string }
   | { type: 'call.ice'; conversationId: string; userId: string; candidate?: unknown }
-  | { type: 'call.hangup' | 'call.decline'; conversationId: string; userId: string }
+  | { type: 'call.hangup'; conversationId: string; userId: string }
+  | { type: 'call.decline'; conversationId: string; userId: string; reason?: 'busy' | 'missed' | 'no-answer' | 'declined' }
   | { type: 'connected' | 'disconnected' };
