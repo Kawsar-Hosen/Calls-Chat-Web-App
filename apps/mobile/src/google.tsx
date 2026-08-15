@@ -1,7 +1,7 @@
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useI18n } from './i18n';
 
@@ -9,6 +9,8 @@ const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? '';
 const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? '';
 const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';
 const GOOGLE_CONFIGURED = Boolean(GOOGLE_CLIENT_ID);
+
+const GOOGLE_ANDROID_REDIRECT_URI = GOOGLE_ANDROID_CLIENT_ID ? `com.googleusercontent.apps.${GOOGLE_ANDROID_CLIENT_ID}:/oauth2redirect` : undefined;
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -31,6 +33,7 @@ export function useGoogleSignIn(onToken: (idToken: string) => Promise<void>) {
     webClientId: GOOGLE_CLIENT_ID,
     androidClientId: GOOGLE_ANDROID_CLIENT_ID || GOOGLE_CLIENT_ID,
     iosClientId: GOOGLE_IOS_CLIENT_ID || GOOGLE_CLIENT_ID,
+    ...(Platform.OS === 'android' && GOOGLE_ANDROID_REDIRECT_URI ? { redirectUri: GOOGLE_ANDROID_REDIRECT_URI } : {}),
   });
 
   useEffect(() => {
