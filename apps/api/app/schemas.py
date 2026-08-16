@@ -326,3 +326,123 @@ class ResetPasswordRequest(BaseModel):
     email: str
     code: str = Field(pattern=r"^\d{6}$")
     password: str = Field(min_length=8, max_length=128)
+
+
+# ── Feed / Posts ────────────────────────────────────────────────
+
+
+class PostMediaView(ORMModel):
+    id: str
+    url: str
+    mime_type: str
+    sort_order: int
+
+
+class PostReactionView(ORMModel):
+    emoji: str
+    user_id: str
+
+
+class CreatePostRequest(BaseModel):
+    content: str | None = Field(default=None, max_length=5000)
+    media_ids: list[str] = Field(default_factory=list, max_length=10)
+    visibility: Literal["friends", "public"] = "public"
+
+
+class PostView(BaseModel):
+    id: str
+    author: UserPublic
+    content: str | None
+    visibility: str
+    media: list[PostMediaView] = Field(default_factory=list)
+    reactions: list[PostReactionView] = Field(default_factory=list)
+    like_count: int = 0
+    comment_count: int = 0
+    share_count: int = 0
+    my_like_emoji: str | None = None
+    my_bookmarked: bool = False
+    my_shared: bool = False
+    created_at: datetime
+    updated_at: datetime | None = None
+
+
+class PostPage(BaseModel):
+    items: list[PostView]
+    next_cursor: str | None
+
+
+# ── Comments ────────────────────────────────────────────────────
+
+
+class CreateCommentRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+    parent_id: str | None = None
+
+
+class CommentReactionView(ORMModel):
+    emoji: str
+    user_id: str
+
+
+class CommentView(BaseModel):
+    id: str
+    post_id: str
+    author: UserPublic
+    content: str
+    parent_id: str | None = None
+    reactions: list[CommentReactionView] = Field(default_factory=list)
+    reaction_count: int = 0
+    reply_count: int = 0
+    created_at: datetime
+
+
+class CommentPage(BaseModel):
+    items: list[CommentView]
+    next_cursor: str | None
+
+
+# ── Reactions / Shares / Bookmarks ──────────────────────────────
+
+
+class ReactRequest(BaseModel):
+    emoji: str = Field(default="\U0001f44d", max_length=10)
+
+
+class ReactResponse(BaseModel):
+    like_count: int
+    my_like_emoji: str | None
+    reactions: list[PostReactionView]
+
+
+class ShareResponse(BaseModel):
+    share_count: int
+    my_shared: bool
+
+
+class BookmarkResponse(BaseModel):
+    my_bookmarked: bool
+
+
+# ── Stories ─────────────────────────────────────────────────────
+
+
+class CreateStoryRequest(BaseModel):
+    media_id: str
+    content: str | None = Field(default=None, max_length=500)
+
+
+class StoryView_(BaseModel):
+    id: str
+    media_url: str
+    media_type: str
+    content: str | None
+    created_at: datetime
+    expires_at: datetime
+    view_count: int = 0
+    my_viewed: bool = False
+
+
+class StoryGroupView(BaseModel):
+    author: UserPublic
+    stories: list[StoryView_]
+    has_unviewed: bool = False

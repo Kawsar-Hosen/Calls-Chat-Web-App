@@ -215,3 +215,100 @@ class GroupApplication(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class Post(Base):
+    __tablename__ = "posts"
+    __table_args__ = (
+        Index("ix_post_author_created", "author_id", "created_at"),
+        Index("ix_post_visibility_created", "visibility", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    content: Mapped[str | None] = mapped_column(Text)
+    visibility: Mapped[str] = mapped_column(String(10), default="public")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PostMedia(Base):
+    __tablename__ = "post_media"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    post_id: Mapped[str] = mapped_column(ForeignKey("posts.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str] = mapped_column(String(2048))
+    mime_type: Mapped[str] = mapped_column(String(120))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class PostLike(Base):
+    __tablename__ = "post_likes"
+    __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_post_like"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    post_id: Mapped[str] = mapped_column(ForeignKey("posts.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    emoji: Mapped[str] = mapped_column(String(10), default="\U0001f44d")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PostComment(Base):
+    __tablename__ = "post_comments"
+    __table_args__ = (Index("ix_post_comment_created", "post_id", "created_at"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    post_id: Mapped[str] = mapped_column(ForeignKey("posts.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey("post_comments.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CommentLike(Base):
+    __tablename__ = "comment_likes"
+    __table_args__ = (UniqueConstraint("comment_id", "user_id", name="uq_comment_like"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    comment_id: Mapped[str] = mapped_column(ForeignKey("post_comments.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PostShare(Base):
+    __tablename__ = "post_shares"
+    __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_post_share"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    post_id: Mapped[str] = mapped_column(ForeignKey("posts.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PostBookmark(Base):
+    __tablename__ = "post_bookmarks"
+    __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_post_bookmark"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    post_id: Mapped[str] = mapped_column(ForeignKey("posts.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Story(Base):
+    __tablename__ = "stories"
+    __table_args__ = (
+        Index("ix_story_author_created", "author_id", "created_at"),
+        Index("ix_story_expires", "expires_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    content: Mapped[str | None] = mapped_column(Text)
+    media_url: Mapped[str] = mapped_column(String(2048))
+    media_type: Mapped[str] = mapped_column(String(10), default="image")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class StoryView(Base):
+    __tablename__ = "story_views"
+    __table_args__ = (UniqueConstraint("story_id", "viewer_id", name="uq_story_view"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    story_id: Mapped[str] = mapped_column(ForeignKey("stories.id", ondelete="CASCADE"), index=True)
+    viewer_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

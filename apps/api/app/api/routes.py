@@ -20,7 +20,8 @@ from app.dependencies import get_current_session, get_current_user, websocket_us
 from app.email import generate_deletion_code, mask_email, render_deletion_email, render_password_reset_email, send_email
 from app.models import (AccountDeletion, AuthSession, Block, CallOffer, Conversation, ConversationMember, Device,
                         FriendRequest, Friendship, Group, GroupApplication, GroupMember, MediaAttachment,
-                        Message, MessageRead, PasswordReset, Reaction, User, new_id, utcnow)
+                        Message, MessageRead, PasswordReset, Post, PostBookmark, PostComment, PostLike,
+                        PostMedia, PostShare, Reaction, Story, StoryView, User, CommentLike, new_id, utcnow)
 from app.push import push_to_users
 from app.rate_limit import auth_rate_limit
 from app.schemas import *

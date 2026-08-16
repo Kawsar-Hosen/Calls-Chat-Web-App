@@ -160,4 +160,103 @@ export type SocketEvent =
   | { type: 'call.ice'; conversationId: string; userId: string; candidate?: unknown }
   | { type: 'call.hangup'; conversationId: string; userId: string }
   | { type: 'call.decline'; conversationId: string; userId: string; reason?: 'busy' | 'missed' | 'no-answer' | 'declined' }
+  | { type: 'post.created'; post: Post }
+  | { type: 'post.updated'; post: Post }
+  | { type: 'post.deleted'; postId: string }
+  | { type: 'comment.created'; postId: string; comment: PostComment }
+  | { type: 'comment.deleted'; postId: string; commentId: string }
+  | { type: 'reaction.updated'; postId: string; userId: string; emoji: string; likeCount: number }
+  | { type: 'story.created'; story: StoryItem }
+  | { type: 'story.deleted'; storyId: string }
   | { type: 'connected' | 'disconnected' };
+
+
+// ── Feed / Posts ────────────────────────────────────────────────
+
+
+export interface PostMedia {
+  id: string;
+  url: string;
+  mimeType: string;
+  sortOrder: number;
+}
+
+export interface PostReaction {
+  emoji: string;
+  userId: string;
+}
+
+export interface Post {
+  id: string;
+  author: User;
+  content: string | null;
+  visibility: 'friends' | 'public';
+  media: PostMedia[];
+  reactions: PostReaction[];
+  likeCount: number;
+  commentCount: number;
+  shareCount: number;
+  myLikeEmoji: string | null;
+  myBookmarked: boolean;
+  myShared: boolean;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+export interface PostComment {
+  id: string;
+  postId: string;
+  author: User;
+  content: string;
+  parentId: string | null;
+  reactions: PostReaction[];
+  reactionCount: number;
+  replyCount: number;
+  createdAt: string;
+}
+
+export interface PostPage {
+  items: Post[];
+  nextCursor: string | null;
+}
+
+export interface CommentPage {
+  items: PostComment[];
+  nextCursor: string | null;
+}
+
+export interface ReactResponse {
+  likeCount: number;
+  myLikeEmoji: string | null;
+  reactions: PostReaction[];
+}
+
+export interface ShareResponse {
+  shareCount: number;
+  myShared: boolean;
+}
+
+export interface BookmarkResponse {
+  myBookmarked: boolean;
+}
+
+
+// ── Stories ─────────────────────────────────────────────────────
+
+
+export interface StoryItem {
+  id: string;
+  mediaUrl: string;
+  mediaType: 'image' | 'video';
+  content: string | null;
+  createdAt: string;
+  expiresAt: string;
+  viewCount: number;
+  myViewed: boolean;
+}
+
+export interface StoryGroup {
+  author: User;
+  stories: StoryItem[];
+  hasUnviewed: boolean;
+}

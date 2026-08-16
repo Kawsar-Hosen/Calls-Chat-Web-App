@@ -71,6 +71,23 @@ export function SocketProvider({ children }: PropsWithChildren) {
             emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? '') });
           } else if (type === 'call.decline') {
             emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? ''), ...(raw.reason ? { reason: String(raw.reason) as 'busy' | 'missed' | 'no-answer' | 'declined' } : {}) });
+          } else if (type === 'post.created' || type === 'post.updated') {
+            const p: any = raw.post ?? raw;
+            emit({ type, post: { id: String(p.id), author: { id: String(p.author?.id ?? ''), username: String(p.author?.username ?? ''), displayName: String(p.author?.display_name ?? ''), bio: p.author?.bio ?? null, avatarUrl: p.author?.avatar_url ?? null, isOnline: p.author?.is_online ?? false, lastSeenAt: p.author?.last_seen_at ?? null }, content: p.content ?? null, visibility: p.visibility ?? 'public', media: (p.media ?? []).map((m: any) => ({ id: String(m.id), url: String(m.url), mimeType: String(m.mime_type), sortOrder: Number(m.sort_order ?? 0) })), reactions: (p.reactions ?? []).map((r: any) => ({ emoji: String(r.emoji), userId: String(r.user_id) })), likeCount: Number(p.like_count ?? 0), commentCount: Number(p.comment_count ?? 0), shareCount: Number(p.share_count ?? 0), myLikeEmoji: p.my_like_emoji ?? null, myBookmarked: p.my_bookmarked === true, myShared: p.my_shared === true, createdAt: String(p.created_at), updatedAt: p.updated_at ? String(p.updated_at) : null } });
+          } else if (type === 'post.deleted') {
+            emit({ type, postId: String(raw.post_id ?? raw.id ?? '') });
+          } else if (type === 'comment.created') {
+            const c: any = raw.comment ?? raw;
+            emit({ type, postId: String(raw.post_id ?? c.post_id ?? ''), comment: { id: String(c.id), postId: String(c.post_id ?? raw.post_id ?? ''), author: { id: String(c.author?.id ?? ''), username: String(c.author?.username ?? ''), displayName: String(c.author?.display_name ?? ''), bio: c.author?.bio ?? null, avatarUrl: c.author?.avatar_url ?? null, isOnline: c.author?.is_online ?? false, lastSeenAt: c.author?.last_seen_at ?? null }, content: String(c.content ?? ''), parentId: c.parent_id ? String(c.parent_id) : null, reactions: [], reactionCount: Number(c.reaction_count ?? 0), replyCount: Number(c.reply_count ?? 0), createdAt: String(c.created_at) } });
+          } else if (type === 'comment.deleted') {
+            emit({ type, postId: String(raw.post_id ?? ''), commentId: String(raw.comment_id ?? '') });
+          } else if (type === 'reaction.updated') {
+            emit({ type, postId: String(raw.post_id ?? ''), userId: String(raw.user_id ?? ''), emoji: String(raw.emoji ?? '👍'), likeCount: Number(raw.like_count ?? 0) });
+          } else if (type === 'story.created') {
+            const s: any = raw.story ?? raw;
+            emit({ type, story: { id: String(s.id), mediaUrl: String(s.media_url), mediaType: s.media_type === 'video' ? 'video' : 'image', content: s.content ?? null, createdAt: String(s.created_at), expiresAt: String(s.expires_at), viewCount: Number(s.view_count ?? 0), myViewed: false } });
+          } else if (type === 'story.deleted') {
+            emit({ type, storyId: String(raw.story_id ?? raw.id ?? '') });
           }
         } catch {
           // A malformed event should not interrupt the connection.

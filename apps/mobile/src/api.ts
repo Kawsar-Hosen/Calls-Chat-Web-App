@@ -1,7 +1,7 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as SecureStore from 'expo-secure-store';
 import { Image } from 'react-native';
-import type { Attachment, AuthResult, Conversation, FriendRequest, Group, GroupApplication, GroupCustomization, GroupMember, GroupRole, GroupSettings, GroupSummary, Message, Tokens, User, UserSearchResult } from './types';
+import type { Attachment, AuthResult, BookmarkResponse, CommentPage, Conversation, FriendRequest, Group, GroupApplication, GroupCustomization, GroupMember, GroupRole, GroupSettings, GroupSummary, Message, Post, PostComment, PostPage, ReactResponse, ShareResponse, StoryGroup, Tokens, User, UserSearchResult } from './types';
 
 const DEFAULT_CUSTOMIZATION: GroupCustomization = { theme: 'default', font: 'default', wallpaper: 'plain', bubble: 'rounded', density: 'comfortable', radius: 8 };
 
@@ -114,6 +114,39 @@ export function mapMessage(raw: Json): Message {
 function mapAttachment(raw: Json): Attachment {
   const url = String(raw.url ?? '');
   return { id: String(raw.id), name: String(raw.name ?? 'Attachment'), url: url.startsWith('/') ? `${API_ORIGIN}${url}` : url, mimeType: String(raw.mime_type ?? 'application/octet-stream'), size: Number(raw.size ?? 0) };
+}
+
+function mapPost(raw: Json): Post {
+  return {
+    id: String(raw.id),
+    author: mapUser((raw.author ?? {}) as Json),
+    content: raw.content ? String(raw.content) : null,
+    visibility: raw.visibility === 'friends' ? 'friends' : 'public',
+    media: ((raw.media ?? []) as Json[]).map((m) => ({ id: String(m.id), url: String(m.url), mimeType: String(m.mime_type), sortOrder: Number(m.sort_order ?? 0) })),
+    reactions: ((raw.reactions ?? []) as Json[]).map((r) => ({ emoji: String(r.emoji), userId: String(r.user_id) })),
+    likeCount: Number(raw.like_count ?? 0),
+    commentCount: Number(raw.comment_count ?? 0),
+    shareCount: Number(raw.share_count ?? 0),
+    myLikeEmoji: raw.my_like_emoji ? String(raw.my_like_emoji) : null,
+    myBookmarked: raw.my_bookmarked === true,
+    myShared: raw.my_shared === true,
+    createdAt: String(raw.created_at),
+    updatedAt: raw.updated_at ? String(raw.updated_at) : null,
+  };
+}
+
+function mapComment(raw: Json): PostComment {
+  return {
+    id: String(raw.id),
+    postId: String(raw.post_id),
+    author: mapUser((raw.author ?? {}) as Json),
+    content: String(raw.content ?? ''),
+    parentId: raw.parent_id ? String(raw.parent_id) : null,
+    reactions: ((raw.reactions ?? []) as Json[]).map((r) => ({ emoji: String(r.emoji), userId: String(r.user_id) })),
+    reactionCount: Number(raw.reaction_count ?? 0),
+    replyCount: Number(raw.reply_count ?? 0),
+    createdAt: String(raw.created_at),
+  };
 }
 
 function mapTokens(raw: Json): Tokens {
@@ -515,5 +548,109 @@ export const api = {
   },
   async resetPassword(email: string, code: string, password: string) {
     await request<void>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ email, code, password }) });
+  },
+
+  // ── Feed / Posts ──────────────────────────────────────────
+
+  async feed(section: 'friends' | 'public' = 'friends', cursor?: string, limit = 20): Promise<PostPage> {
+    const params = new URLSearchParams({ section, limit: String(limit) });
+    if (cursor) params.set('cursor', cursor);
+    const raw = await request<Json>(`/feed?${params}`);
+    return { items: (extractItems(raw) as Json[]).map(mapPost), nextCursor: raw.next_cursor ? String(raw.next_cursor) : null };
+  },
+
+  async createPost(data: { content?: string; mediaIds?: string[]; visibility?: 'friends' | 'public' }): Promise<Post> {
+    const raw = await request<Json>('/posts', { method: 'POST', body: JSON.stringify({ content: data.content || null, media_ids: data.mediaIds || [], visibility: data.visibility || 'public' }) });
+    return mapPost(raw);
+  },
+
+  async getPost(postId: string): Promise<Post> {
+    return mapPost(await request<Json>(`/posts/${postId}`));
+  },
+
+  async editPost(postId: string, content: string): Promise<Post> {
+    return mapPost(await request<Json>(`/posts/${postId}`, { method: 'PATCH', body: JSON.stringify({ content }) }));
+  },
+
+  async deletePost(postId: string): Promise<void> {
+    await request<void>(`/posts/${postId}`, { method: 'DELETE' });
+  },
+
+  async userPosts(userId: string, cursor?: string, limit = 20): Promise<PostPage> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set('cursor', cursor);
+    const raw = await request<Json>(`/users/${userId}/posts?${params}`);
+    return { items: (extractItems(raw) as Json[]).map(mapPost), nextCursor: raw.next_cursor ? String(raw.next_cursor) : null };
+  },
+
+  async reactPost(postId: string, emoji: string): Promise<ReactResponse> {
+    const raw = await request<Json>(`/posts/${postId}/react`, { method: 'POST', body: JSON.stringify({ emoji }) });
+    return { likeCount: Number(raw.like_count ?? 0), myLikeEmoji: raw.my_like_emoji ? String(raw.my_like_emoji) : null, reactions: ((raw.reactions ?? []) as Json[]).map((r) => ({ emoji: String(r.emoji), userId: String(r.user_id) })) };
+  },
+
+  async postComments(postId: string, cursor?: string, limit = 20): Promise<CommentPage> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set('cursor', cursor);
+    const raw = await request<Json>(`/posts/${postId}/comments?${params}`);
+    return { items: (extractItems(raw) as Json[]).map(mapComment), nextCursor: raw.next_cursor ? String(raw.next_cursor) : null };
+  },
+
+  async addComment(postId: string, content: string, parentId?: string): Promise<PostComment> {
+    const raw = await request<Json>(`/posts/${postId}/comments`, { method: 'POST', body: JSON.stringify({ content, parent_id: parentId || null }) });
+    return mapComment(raw);
+  },
+
+  async deleteComment(postId: string, commentId: string): Promise<void> {
+    await request<void>(`/posts/${postId}/comments/${commentId}`, { method: 'DELETE' });
+  },
+
+  async reactComment(postId: string, commentId: string, emoji: string): Promise<{ reactionCount: number; myReaction: string | null }> {
+    const raw = await request<Json>(`/posts/${postId}/comments/${commentId}/react`, { method: 'POST', body: JSON.stringify({ emoji }) });
+    return { reactionCount: Number(raw.reaction_count ?? 0), myReaction: raw.my_reaction ? String(raw.my_reaction) : null };
+  },
+
+  async sharePost(postId: string): Promise<ShareResponse> {
+    const raw = await request<Json>(`/posts/${postId}/share`, { method: 'POST' });
+    return { shareCount: Number(raw.share_count ?? 0), myShared: raw.my_shared === true };
+  },
+
+  async bookmarkPost(postId: string): Promise<BookmarkResponse> {
+    const raw = await request<Json>(`/posts/${postId}/bookmark`, { method: 'POST' });
+    return { myBookmarked: raw.my_bookmarked === true };
+  },
+
+  async bookmarks(cursor?: string, limit = 20): Promise<PostPage> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set('cursor', cursor);
+    const raw = await request<Json>(`/bookmarks?${params}`);
+    return { items: (extractItems(raw) as Json[]).map(mapPost), nextCursor: raw.next_cursor ? String(raw.next_cursor) : null };
+  },
+
+  async feedStories(): Promise<StoryGroup[]> {
+    const raw = await request<unknown>('/feed/stories');
+    const arr = Array.isArray(raw) ? raw : [];
+    return arr.map((g: Json) => ({
+      author: mapUser((g.author ?? {}) as Json),
+      stories: ((g.stories ?? []) as Json[]).map((s) => ({
+        id: String(s.id), mediaUrl: String(s.media_url), mediaType: s.media_type === 'video' ? 'video' as const : 'image' as const,
+        content: s.content ? String(s.content) : null, createdAt: String(s.created_at), expiresAt: String(s.expires_at),
+        viewCount: Number(s.view_count ?? 0), myViewed: s.my_viewed === true,
+      })),
+      hasUnviewed: g.has_unviewed === true,
+    }));
+  },
+
+  async createStory(mediaId: string, content?: string) {
+    const raw = await request<Json>('/stories', { method: 'POST', body: JSON.stringify({ media_id: mediaId, content: content || null }) });
+    return { id: String(raw.id), mediaUrl: String(raw.media_url), mediaType: raw.media_type === 'video' ? 'video' as const : 'image' as const, content: raw.content ? String(raw.content) : null, createdAt: String(raw.created_at), expiresAt: String(raw.expires_at), viewCount: Number(raw.view_count ?? 0), myViewed: false };
+  },
+
+  async deleteStory(storyId: string): Promise<void> {
+    await request<void>(`/stories/${storyId}`, { method: 'DELETE' });
+  },
+
+  async viewStory(storyId: string): Promise<{ viewCount: number }> {
+    const raw = await request<Json>(`/stories/${storyId}/view`, { method: 'POST' });
+    return { viewCount: Number(raw.view_count ?? 0) };
   },
 };
