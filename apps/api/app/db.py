@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+import ssl as _ssl
 
 from sqlalchemy import Engine, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -19,7 +20,11 @@ if settings.database_url.startswith("sqlite"):
         cursor.close()
 
 
-engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+_connect_args: dict = {}
+if settings.database_url.startswith("postgresql+asyncpg://") and "neon" in settings.database_url:
+    _connect_args["ssl"] = _ssl.create_default_context()
+
+engine = create_async_engine(settings.database_url, pool_pre_ping=True, connect_args=_connect_args)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 

@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.config import settings
 from app.db import Base
 import app.models  # noqa: F401
+import ssl as _ssl
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
@@ -14,7 +15,10 @@ def run_migrations_offline():
     with context.begin_transaction(): context.run_migrations()
 
 async def run_async_migrations():
-    connectable = async_engine_from_config(config.get_section(config.config_ini_section, {}), prefix="sqlalchemy.", poolclass=pool.NullPool)
+    connect_args = {}
+    if settings.database_url.startswith("postgresql+asyncpg://") and "neon" in settings.database_url:
+        connect_args["ssl"] = _ssl.create_default_context()
+    connectable = async_engine_from_config(config.get_section(config.config_ini_section, {}), prefix="sqlalchemy.", poolclass=pool.NullPool, connect_args=connect_args)
     async with connectable.connect() as connection:
         def run(connection):
             context.configure(connection=connection, target_metadata=target_metadata)
