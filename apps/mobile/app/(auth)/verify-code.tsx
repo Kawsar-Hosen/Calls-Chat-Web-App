@@ -4,13 +4,11 @@ import { useCallback, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
-import { useTheme } from '@/theme';
 import { useI18n } from '@/i18n';
-import { ErrorText, PrimaryButton } from '@/ui';
+import { BrandMark, ErrorText, PrimaryButton } from '@/ui';
 
 export default function VerifyCodeScreen() {
   const { email } = useLocalSearchParams<{ email: string }>();
-  const { colors } = useTheme();
   const { t, isRTL } = useI18n();
   const router = useRouter();
   const [code, setCode] = useState('');
@@ -44,16 +42,16 @@ export default function VerifyCodeScreen() {
   }, [code]);
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.iconCircle, { backgroundColor: colors.accentSoft }]}>
-              <MaterialCommunityIcons name="shield-key-outline" size={42} color={colors.accent} />
+          <View style={styles.card}>
+            <View style={styles.iconCircle}>
+              <MaterialCommunityIcons name="shield-key-outline" size={42} color="#2563EB" />
             </View>
-            <Text style={[styles.title, { color: colors.text }]}>{t('fpVerify')}</Text>
-            <Text style={[styles.subtitle, { color: colors.muted }]}>{t('fpSentDetail')}</Text>
-            <Text style={[styles.emailText, { color: colors.accent }]}>{email}</Text>
+            <Text style={styles.title}>{t('fpVerify')}</Text>
+            <Text style={styles.subtitle}>{t('fpSentDetail')}</Text>
+            <Text style={styles.emailText}>{email}</Text>
 
             <View style={styles.codeRow}>
               {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -66,7 +64,7 @@ export default function VerifyCodeScreen() {
                   keyboardType="number-pad"
                   maxLength={1}
                   selectTextOnFocus
-                  style={[styles.codeInput, { color: colors.text, backgroundColor: colors.background, borderColor: code[i] ? colors.accent : colors.border }]}
+                  style={[styles.codeInput, code[i] ? styles.codeInputFilled : null]}
                 />
               ))}
             </View>
@@ -74,7 +72,7 @@ export default function VerifyCodeScreen() {
             {error ? <ErrorText>{error}</ErrorText> : null}
             <PrimaryButton title={t('fpVerify')} loading={loading} disabled={code.length !== 6} onPress={() => void submit()} />
             <Pressable onPress={() => { setCode(''); setError(''); inputs.current[0]?.focus(); }} style={styles.resendBtn}>
-              <Text style={[styles.resendText, { color: colors.accent }]}>{t('fpResend')}</Text>
+              <Text style={styles.resendText}>{t('fpResend')}</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -84,15 +82,16 @@ export default function VerifyCodeScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, backgroundColor: '#F8FAFC' },
   page: { flexGrow: 1, justifyContent: 'center', padding: 14, paddingTop: 72, paddingBottom: 18 },
-  card: { width: '100%', maxWidth: 440, alignSelf: 'center', padding: 24, borderWidth: 1, borderRadius: 20, alignItems: 'center', gap: 14 },
-  iconCircle: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  title: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
-  subtitle: { fontSize: 13, lineHeight: 19, textAlign: 'center' },
-  emailText: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
+  card: { width: '100%', maxWidth: 440, alignSelf: 'center', padding: 24, borderWidth: 1, borderColor: '#E8EDF3', borderRadius: 18, backgroundColor: '#FFFFFF', alignItems: 'center', gap: 12 },
+  iconCircle: { width: 76, height: 76, borderRadius: 38, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  title: { color: '#111827', fontSize: 22, fontWeight: '800', textAlign: 'center' },
+  subtitle: { color: '#64748B', fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  emailText: { color: '#2563EB', fontSize: 14, fontWeight: '700', marginBottom: 8 },
   codeRow: { flexDirection: 'row', gap: 10, marginVertical: 8 },
-  codeInput: { width: 48, height: 56, borderWidth: 2, borderRadius: 12, textAlign: 'center', fontSize: 22, fontWeight: '800' },
+  codeInput: { width: 48, height: 56, borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, textAlign: 'center', fontSize: 22, fontWeight: '800', color: '#111827', backgroundColor: '#F8FAFC' },
+  codeInputFilled: { borderColor: '#2563EB', backgroundColor: '#EFF6FF' },
   resendBtn: { marginTop: 8, padding: 8 },
-  resendText: { fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
+  resendText: { color: '#2563EB', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
 });
