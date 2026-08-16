@@ -2,11 +2,9 @@
   "name": "xyteee",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["apps/web", "apps/mobile"],
+  "workspaces": ["apps/mobile"],
   "scripts": {
-    "dev:web": "npm --workspace @xyteee/web run dev",
     "dev:mobile": "npm --workspace xyteee-mobile run start",
-    "build:web": "npm --workspace @xyteee/web run build",
-    "typecheck": "npm --workspace @xyteee/web run typecheck && npm --workspace xyteee-mobile run typecheck"
+    "typecheck": "npm --workspace xyteee-mobile run typecheck"
   }
 }

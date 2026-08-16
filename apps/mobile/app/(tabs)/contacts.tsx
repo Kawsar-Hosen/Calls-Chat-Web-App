@@ -59,8 +59,8 @@ export default function ContactsScreen() {
       <ScreenHeader title={t('contacts')} eyebrow={t('yourNetwork')} right={<Pressable onPress={() => router.push('/contacts/friends')} style={({ pressed }) => [styles.count, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.6 : 1 }]}><Text style={[styles.countText, { color: colors.accent }]}>{friends.length} {t('friendsLabel')}</Text></Pressable>} />
       {loading ? <SkeletonList rows={8} /> : (
         <FlatList
-          data={['__services__', ...friends, '__groups__'] as string[]}
-          keyExtractor={(item) => String(item)}
+          data={friends}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.accent} onRefresh={() => { setRefreshing(true); void load(true); }} />}
           ListHeaderComponent={<>
@@ -77,26 +77,21 @@ export default function ContactsScreen() {
             {error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
             <Text style={[styles.sectionLabel, { color: colors.muted }]}>{t('friendsLabel')} · {friends.length}</Text>
           </>}
-          renderItem={({ item }) => {
-            if (item === '__services__') return null;
-            if (item === '__groups__') return (
-              <Text style={[styles.sectionLabel, { color: colors.muted }]}>{t('groupsLabel')} · {groups.length}</Text>
-            );
-            const friend = friends.find((f) => f.id === item);
-            if (!friend) return null;
-            return (
-              <Pressable onPress={() => openChat(friend)} style={({ pressed }) => [styles.friendCard, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}>
-                <Avatar name={friend.displayName} uri={friend.avatarUrl ?? null} online={friend.isOnline} />
-                <View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.friendName, { color: colors.text, textAlign: isRTL ? 'right' : 'left' }]}>{friend.remark || friend.displayName}</Text><Text numberOfLines={1} style={[styles.friendHandle, { color: friend.isOnline ? colors.success : colors.muted, textAlign: isRTL ? 'right' : 'left' }]}>{friend.isOnline ? t('online') : `@${friend.username}`}</Text></View>
-                <Pressable hitSlop={10} onPress={() => openChat(friend)} style={[styles.chatBtn, { backgroundColor: colors.accentSoft }]}><MaterialCommunityIcons name="message-text-outline" size={18} color={colors.accent} /></Pressable>
-              </Pressable>
-            );
-          }}
-          ListFooterComponent={groups.length ? <View style={styles.groupsSection}>{groups.map((group) => <Pressable key={group.id} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })} style={({ pressed }) => [styles.friendCard, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.groupAvatar, { backgroundColor: colors.accentSoft }]}><MaterialCommunityIcons name="account-group-outline" size={20} color={colors.accent} /></View>
-            <View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.friendName, { color: colors.text }]}>{group.name}</Text><Text numberOfLines={1} style={[styles.friendHandle, { color: colors.muted }]}>{group.memberCount} {t('members')} · {t('youAre')} {group.myRole}</Text></View>
-            <MaterialCommunityIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.faint} />
-          </Pressable>)}</View> : null}
+          renderItem={({ item: friend }) => (
+            <Pressable onPress={() => openChat(friend)} style={({ pressed }) => [styles.friendCard, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}>
+              <Avatar name={friend.displayName} uri={friend.avatarUrl ?? null} online={friend.isOnline} />
+              <View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.friendName, { color: colors.text, textAlign: isRTL ? 'right' : 'left' }]}>{friend.remark || friend.displayName}</Text><Text numberOfLines={1} style={[styles.friendHandle, { color: friend.isOnline ? colors.success : colors.muted, textAlign: isRTL ? 'right' : 'left' }]}>{friend.isOnline ? t('online') : `@${friend.username}`}</Text></View>
+              <Pressable hitSlop={10} onPress={() => openChat(friend)} style={[styles.chatBtn, { backgroundColor: colors.accentSoft }]}><MaterialCommunityIcons name="message-text-outline" size={18} color={colors.accent} /></Pressable>
+            </Pressable>
+          )}
+          ListFooterComponent={groups.length ? <>
+            <Text style={[styles.sectionLabel, { color: colors.muted }]}>{t('groupsLabel')} · {groups.length}</Text>
+            <View style={styles.groupsSection}>{groups.map((group) => <Pressable key={group.id} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })} style={({ pressed }) => [styles.friendCard, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.groupAvatar, { backgroundColor: colors.accentSoft }]}><MaterialCommunityIcons name="account-group-outline" size={20} color={colors.accent} /></View>
+              <View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.friendName, { color: colors.text }]}>{group.name}</Text><Text numberOfLines={1} style={[styles.friendHandle, { color: colors.muted }]}>{group.memberCount} {t('members')} · {t('youAre')} {group.myRole}</Text></View>
+              <MaterialCommunityIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={20} color={colors.faint} />
+            </Pressable>)}</View>
+          </> : null}
         />
       )}
     </SafeAreaView>

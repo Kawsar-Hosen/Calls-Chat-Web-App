@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ import { BrandMark, ErrorText, PrimaryButton } from '@/ui';
 export default function LoginScreen() {
   const { login, loginWithGoogle } = useAuth();
   const { t, isRTL } = useI18n();
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -36,7 +37,7 @@ export default function LoginScreen() {
           <View style={styles.form}>
             <AuthField icon="email-outline" value={email} onChangeText={setEmail} placeholder={t('authEmail')} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
             <AuthField icon="lock-outline" value={password} onChangeText={setPassword} placeholder={t('authPassword')} secureTextEntry={!showPassword} autoComplete="current-password" onSubmitEditing={() => void submit()} right={<Pressable accessibilityLabel={showPassword ? t('authHidePassword') : t('authShowPassword')} onPress={() => setShowPassword((value) => !value)} style={styles.eye}><MaterialCommunityIcons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={19} color="#94A3B8" /></Pressable>} />
-            <Pressable onPress={() => setError(t('authRecoveryUnavailable'))} style={[styles.forgot, isRTL && styles.forgotRTL]}><Text style={styles.link}>{t('authForgotPassword')}</Text></Pressable>
+            <Pressable onPress={() => router.push('/(auth)/forgot-password')} style={[styles.forgot, isRTL && styles.forgotRTL]}><Text style={styles.link}>{t('authForgotPassword')}</Text></Pressable>
             {error ? <ErrorText>{error}</ErrorText> : null}
             <PrimaryButton title={t('authContinue')} loading={loading} disabled={!email || !password} onPress={() => void submit()} />
           </View>

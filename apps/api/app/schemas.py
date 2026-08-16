@@ -303,3 +303,26 @@ class DeletionCodeSent(BaseModel):
 class DeleteAccountRequest(BaseModel):
     password: str
     code: str = Field(pattern=r"^\d{6}$")
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value.count("@") != 1 or "." not in value.rsplit("@", 1)[1]:
+            raise ValueError("invalid email address")
+        return value
+
+
+class VerifyResetCodeRequest(BaseModel):
+    email: str
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    code: str = Field(pattern=r"^\d{6}$")
+    password: str = Field(min_length=8, max_length=128)

@@ -507,4 +507,13 @@ export const api = {
   async respondGroupApplication(groupId: string, applicationId: string, accept: boolean) {
     await request<void>(`/groups/${groupId}/applications/${applicationId}/${accept ? 'accept' : 'reject'}`, { method: 'POST' });
   },
+  async forgotPassword(email: string) {
+    await request<void>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) });
+  },
+  async verifyResetCode(email: string, code: string) {
+    await request<void>('/auth/verify-reset-code', { method: 'POST', body: JSON.stringify({ email, code }) });
+  },
+  async resetPassword(email: string, code: string, password: string) {
+    await request<void>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ email, code, password }) });
+  },
 };

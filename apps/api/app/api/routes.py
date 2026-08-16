@@ -17,10 +17,10 @@ from app.auth import (create_access_token, create_refresh_token, decode_token, h
 from app.config import settings
 from app.db import get_db
 from app.dependencies import get_current_session, get_current_user, websocket_user
-from app.email import generate_deletion_code, mask_email, render_deletion_email, send_email
+from app.email import generate_deletion_code, mask_email, render_deletion_email, render_password_reset_email, send_email
 from app.models import (AccountDeletion, AuthSession, Block, CallOffer, Conversation, ConversationMember, Device,
                         FriendRequest, Friendship, Group, GroupApplication, GroupMember, MediaAttachment,
-                        Message, MessageRead, Reaction, User, new_id, utcnow)
+                        Message, MessageRead, PasswordReset, Reaction, User, new_id, utcnow)
 from app.push import push_to_users
 from app.rate_limit import auth_rate_limit
 from app.schemas import *
@@ -203,6 +203,58 @@ async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
 @router.post("/auth/logout", status_code=204)
 async def logout(session: AuthSession = Depends(get_current_session), db: AsyncSession = Depends(get_db)):
     session.revoked_at = utcnow()
+    await db.commit()
+
+
+@router.post("/auth/forgot-password", status_code=204)
+async def forgot_password(data: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    user = await db.scalar(select(User).where(User.email == data.email))
+    if not user:
+        return
+    if not settings.smtp_user and not settings.smtp_password:
+        raise HTTPException(503, "Email sending is not configured.")
+    code = generate_deletion_code()
+    existing = await db.scalar(select(PasswordReset).where(PasswordReset.user_id == user.id))
+    if existing:
+        existing.code_hash = hashlib.sha256(code.encode()).hexdigest()
+        existing.expires_at = utcnow() + timedelta(minutes=10)
+    else:
+        db.add(PasswordReset(user_id=user.id, code_hash=hashlib.sha256(code.encode()).hexdigest(),
+                             expires_at=utcnow() + timedelta(minutes=10)))
+    await db.flush()
+    try:
+        await asyncio.to_thread(send_email, user.email, "Reset your XYTEEE password",
+                                render_password_reset_email(code, user.display_name))
+    except HTTPException:
+        await db.rollback()
+        raise
+    await db.commit()
+
+
+@router.post("/auth/verify-reset-code", status_code=204)
+async def verify_reset_code(data: VerifyResetCodeRequest, db: AsyncSession = Depends(get_db)):
+    user = await db.scalar(select(User).where(User.email == data.email.lower()))
+    if not user:
+        raise HTTPException(400, "Invalid code")
+    pending = await db.scalar(select(PasswordReset).where(PasswordReset.user_id == user.id))
+    if not pending or not hmac.compare_digest(pending.code_hash, hashlib.sha256(data.code.encode()).hexdigest()):
+        raise HTTPException(400, "Invalid verification code")
+    if aware(pending.expires_at) < utcnow():
+        raise HTTPException(400, "Verification code expired. Request a new one.")
+
+
+@router.post("/auth/reset-password", status_code=204)
+async def reset_password(data: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    user = await db.scalar(select(User).where(User.email == data.email.lower()))
+    if not user:
+        raise HTTPException(400, "Invalid code")
+    pending = await db.scalar(select(PasswordReset).where(PasswordReset.user_id == user.id))
+    if not pending or not hmac.compare_digest(pending.code_hash, hashlib.sha256(data.code.encode()).hexdigest()):
+        raise HTTPException(400, "Invalid verification code")
+    if aware(pending.expires_at) < utcnow():
+        raise HTTPException(400, "Verification code expired. Request a new one.")
+    user.password_hash = hash_password(data.password)
+    await db.delete(pending)
     await db.commit()
 
 
