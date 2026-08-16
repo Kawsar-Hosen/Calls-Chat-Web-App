@@ -43,27 +43,60 @@ def generate_deletion_code() -> str:
 
 def render_password_reset_email(code: str, display_name: str) -> str:
     return f"""<!DOCTYPE html>
-<html lang="en"><body style="margin:0;padding:0;background:#F5F5F5;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F5F5F5;padding:24px 0;">
+<html lang="en">
+<head><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"></head>
+<body style="margin:0;padding:0;background:#F0F2F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F0F2F5;padding:32px 16px;">
     <tr><td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#FFFFFF;border-radius:16px;overflow:hidden;border:1px solid #E5E5E5;">
-        <tr><td style="background:linear-gradient(135deg,#2563EB,#7C3AED);padding:28px 28px;text-align:center;">
-          <div style="font-size:15px;font-weight:800;color:#FFFFFF;letter-spacing:.5px;">XYTEEE</div>
-          <div style="font-size:22px;font-weight:900;color:#FFFFFF;margin-top:6px;">Reset your password</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;">
+        <!-- Logo -->
+        <tr><td style="text-align:center;padding-bottom:24px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-table;background:#FFFFFF;border-radius:14px;padding:10px 22px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+            <tr><td style="font-size:20px;font-weight:900;color:#111827;letter-spacing:-0.5px;">X Y T E E</td></tr>
+          </table>
         </td></tr>
-        <tr><td style="padding:30px 28px;color:#191919;font-size:14px;line-height:1.6;">
-          <p style="margin:0 0 12px;">Hi {display_name if display_name else 'there'},</p>
-          <p style="margin:0 0 16px;">We received a request to reset the password for your XYTEEE account. Use the 6-digit code below to create a new password. This code expires in <b>10 minutes</b>.</p>
-          <div style="text-align:center;margin:24px 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-table;">
-              <tr>{''.join(f'<td style="width:44px;height:52px;background:#F0F4FF;border:2px solid #2563EB;border-radius:10px;text-align:center;font-size:22px;font-weight:900;color:#1E40AF;padding-top:10px;">{digit}</td><td style="width:8px;"></td>' for i, digit in enumerate(code))}</tr>
+        <!-- Main Card -->
+        <tr><td style="background:#FFFFFF;border-radius:20px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+          <!-- Header -->
+          <tr><td style="background:linear-gradient(135deg,#4F46E5 0%,#7C3AED 50%,#A855F7 100%);padding:36px 32px 32px;text-align:center;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-table;background:rgba(255,255,255,0.15);border-radius:50%;width:64px;height:64px;">
+              <tr><td align="center" valign="middle" style="font-size:28px;">&#128274;</td></tr>
             </table>
-          </div>
-          <div style="background:#F0F7FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px 16px;margin:0 0 16px;">
-            <p style="margin:0;font-size:12px;color:#1E40AF;">If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.</p>
-          </div>
-          <hr style="border:none;border-top:1px solid #EEEEEE;margin:22px 0;" />
-          <p style="margin:0;font-size:12px;color:#999999;">This is an automated message from XYTEEE. Please do not reply to this email.</p>
+            <div style="font-size:24px;font-weight:900;color:#FFFFFF;margin-top:16px;line-height:1.2;">Password Reset</div>
+            <div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:6px;">Secure your account</div>
+          </td></tr>
+          <!-- Body -->
+          <tr><td style="padding:32px 32px 12px;">
+            <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#111827;">Hi {display_name if display_name else 'there'} &#128075;</p>
+            <p style="margin:0 0 24px;font-size:14px;color:#6B7280;line-height:1.7;">We received a request to reset the password for your XYTEEE account. Enter the verification code below to continue.</p>
+            <!-- Code Boxes -->
+            <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 24px;">
+              <tr>
+                {''.join(f'<td style="width:calc((100% - 60px) / 6);text-align:center;"><div style="background:#F9FAFB;border:2px solid {"#4F46E5" if i == 0 else "#E5E7EB"};border-radius:12px;padding:14px 0;font-size:26px;font-weight:900;color:#111827;">{digit}</div></td>' + ('<td style="width:12px;"></td>' if i < 5 else '') for i, digit in enumerate(code))}
+              </tr>
+            </table>
+            <!-- Timer badge -->
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px;">
+              <tr><td style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:20px;padding:6px 16px;font-size:12px;font-weight:700;color:#92400E;text-align:center;">&#9200; Expires in 10 minutes</td></tr>
+            </table>
+            <!-- Divider -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="border-top:1px solid #F3F4F6;"></td></tr></table>
+            <!-- Warning -->
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:20px 0 0;width:100%;">
+              <tr><td style="background:#EFF6FF;border:1px solid #DBEAFE;border-left:4px solid #3B82F6;border-radius:8px;padding:14px 16px;">
+                <p style="margin:0;font-size:13px;color:#1E40AF;line-height:1.6;"><b>Didn't request this?</b> You can safely ignore this email. Your password will stay the same.</p>
+              </td></tr>
+            </table>
+          </td></tr>
+          <!-- Footer -->
+          <tr><td style="padding:20px 32px 28px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="border-top:1px solid #F3F4F6;"></td></tr></table>
+            <p style="margin:16px 0 0;font-size:11px;color:#9CA3AF;text-align:center;line-height:1.6;">This is an automated security email from XYTEEE.<br/>Please do not reply to this message.</p>
+          </td></tr>
+        </td></tr>
+        <!-- Bottom branding -->
+        <tr><td style="text-align:center;padding:20px 0 0;">
+          <p style="margin:0;font-size:11px;color:#9CA3AF;">XYTEEE &middot; Secure Messaging</p>
         </td></tr>
       </table>
     </td></tr>
@@ -82,21 +115,60 @@ def mask_email(email: str) -> str:
 
 def render_deletion_email(code: str, display_name: str) -> str:
     return f"""<!DOCTYPE html>
-<html lang="en"><body style="margin:0;padding:0;background:#F5F5F5;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F5F5F5;padding:24px 0;">
+<html lang="en">
+<head><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"></head>
+<body style="margin:0;padding:0;background:#F0F2F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F0F2F5;padding:32px 16px;">
     <tr><td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#FFFFFF;border-radius:16px;overflow:hidden;border:1px solid #E5E5E5;">
-        <tr><td style="background:#D94848;padding:26px 28px;text-align:center;">
-          <div style="font-size:15px;font-weight:800;color:#FFFFFF;letter-spacing:.5px;">XYTEEE</div>
-          <div style="font-size:22px;font-weight:900;color:#FFFFFF;margin-top:6px;">Confirm account deletion</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;">
+        <!-- Logo -->
+        <tr><td style="text-align:center;padding-bottom:24px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-table;background:#FFFFFF;border-radius:14px;padding:10px 22px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+            <tr><td style="font-size:20px;font-weight:900;color:#111827;letter-spacing:-0.5px;">X Y T E E</td></tr>
+          </table>
         </td></tr>
-        <tr><td style="padding:28px;color:#191919;font-size:14px;line-height:1.6;">
-          <p style="margin:0 0 12px;">Hi {display_name if display_name else 'there'},</p>
-          <p style="margin:0 0 16px;">We received a request to permanently delete your XYTEEE account. Use the code below to confirm. This code expires in <b>10 minutes</b>.</p>
-          <div style="text-align:center;margin:22px 0;letter-spacing:10px;font-size:32px;font-weight:900;color:#191919;background:#F5F5F5;border-radius:12px;padding:18px 0;">{code}</div>
-          <p style="margin:0 0 16px;color:#666666;">If you did not request this, you can safely ignore this email — your account will stay as it is.</p>
-          <hr style="border:none;border-top:1px solid #EEEEEE;margin:22px 0;" />
-          <p style="margin:0;font-size:12px;color:#999999;">This is an automated message from XYTEEE. Please do not reply to this email.</p>
+        <!-- Main Card -->
+        <tr><td style="background:#FFFFFF;border-radius:20px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+          <!-- Header -->
+          <tr><td style="background:linear-gradient(135deg,#DC2626 0%,#E11D48 50%,#F43F5E 100%);padding:36px 32px 32px;text-align:center;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-table;background:rgba(255,255,255,0.15);border-radius:50%;width:64px;height:64px;">
+              <tr><td align="center" valign="middle" style="font-size:28px;">&#9888;&#65039;</td></tr>
+            </table>
+            <div style="font-size:24px;font-weight:900;color:#FFFFFF;margin-top:16px;line-height:1.2;">Account Deletion</div>
+            <div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:6px;">Confirm to proceed</div>
+          </td></tr>
+          <!-- Body -->
+          <tr><td style="padding:32px 32px 12px;">
+            <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#111827;">Hi {display_name if display_name else 'there'} &#128075;</p>
+            <p style="margin:0 0 24px;font-size:14px;color:#6B7280;line-height:1.7;">We received a request to permanently delete your XYTEEE account. Enter the verification code below to confirm this action.</p>
+            <!-- Code Boxes -->
+            <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 24px;">
+              <tr>
+                {''.join(f'<td style="width:calc((100% - 60px) / 6);text-align:center;"><div style="background:#F9FAFB;border:2px solid {"#DC2626" if i == 0 else "#E5E7EB"};border-radius:12px;padding:14px 0;font-size:26px;font-weight:900;color:#111827;">{digit}</div></td>' + ('<td style="width:12px;"></td>' if i < 5 else '') for i, digit in enumerate(code))}
+              </tr>
+            </table>
+            <!-- Timer badge -->
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px;">
+              <tr><td style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:20px;padding:6px 16px;font-size:12px;font-weight:700;color:#92400E;text-align:center;">&#9200; Expires in 10 minutes</td></tr>
+            </table>
+            <!-- Divider -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="border-top:1px solid #F3F4F6;"></td></tr></table>
+            <!-- Warning -->
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:20px 0 0;width:100%;">
+              <tr><td style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #EF4444;border-radius:8px;padding:14px 16px;">
+                <p style="margin:0;font-size:13px;color:#991B1B;line-height:1.6;"><b>Didn't request this?</b> You can safely ignore this email. Your account will remain active and unchanged.</p>
+              </td></tr>
+            </table>
+          </td></tr>
+          <!-- Footer -->
+          <tr><td style="padding:20px 32px 28px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="border-top:1px solid #F3F4F6;"></td></tr></table>
+            <p style="margin:16px 0 0;font-size:11px;color:#9CA3AF;text-align:center;line-height:1.6;">This is an automated security email from XYTEEE.<br/>Please do not reply to this message.</p>
+          </td></tr>
+        </td></tr>
+        <!-- Bottom branding -->
+        <tr><td style="text-align:center;padding:20px 0 0;">
+          <p style="margin:0;font-size:11px;color:#9CA3AF;">XYTEEE &middot; Secure Messaging</p>
         </td></tr>
       </table>
     </td></tr>

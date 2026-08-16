@@ -4,10 +4,12 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
+import { useTheme } from '@/theme';
 import { useI18n } from '@/i18n';
 import { BrandMark, ErrorText, PrimaryButton } from '@/ui';
 
 export default function ForgotPasswordScreen() {
+  const { colors } = useTheme();
   const { t, isRTL } = useI18n();
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -32,23 +34,23 @@ export default function ForgotPasswordScreen() {
 
   if (sent) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-            <View style={styles.card}>
-              <View style={styles.iconCircle}>
-                <MaterialCommunityIcons name="email-check-outline" size={42} color="#2563EB" />
+            <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.iconCircle, { backgroundColor: colors.accentSoft }]}>
+                <MaterialCommunityIcons name="email-check-outline" size={42} color={colors.accent} />
               </View>
-              <Text style={styles.sentTitle}>{t('fpSent')}</Text>
-              <Text style={styles.sentSubtitle}>{t('fpSentDetail')}</Text>
-              <Text style={styles.maskedEmail}>{email.trim().toLowerCase()}</Text>
+              <Text style={[styles.title, { color: colors.text }]}>{t('fpSent')}</Text>
+              <Text style={[styles.subtitle, { color: colors.muted }]}>{t('fpSentDetail')}</Text>
+              <Text style={[styles.maskedEmail, { color: colors.accent }]}>{email.trim().toLowerCase()}</Text>
               <PrimaryButton title={t('fpVerify')} onPress={() => router.push({ pathname: '/(auth)/verify-code', params: { email: email.trim().toLowerCase() } })} />
               <Pressable onPress={() => { setSent(false); setError(''); }} style={styles.resendBtn}>
-                <Text style={styles.resendText}>{t('fpResend')}</Text>
+                <Text style={[styles.resendText, { color: colors.accent }]}>{t('fpResend')}</Text>
               </Pressable>
-              <Pressable onPress={() => router.back()} style={styles.backBtn}>
-                <MaterialCommunityIcons name={isRTL ? 'arrow-right' : 'arrow-left'} size={17} color="#64748B" />
-                <Text style={styles.backText}>{t('fpBackToLogin')}</Text>
+              <Pressable onPress={() => router.back()} style={[styles.backBtn, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                <MaterialCommunityIcons name={isRTL ? 'arrow-right' : 'arrow-left'} size={17} color={colors.muted} />
+                <Text style={[styles.backText, { color: colors.muted }]}>{t('fpBackToLogin')}</Text>
               </Pressable>
             </View>
           </ScrollView>
@@ -58,33 +60,33 @@ export default function ForgotPasswordScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-          <View style={styles.card}>
-            <View style={styles.iconCircle}>
-              <MaterialCommunityIcons name="lock-reset" size={42} color="#2563EB" />
+          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.iconCircle, { backgroundColor: colors.accentSoft }]}>
+              <MaterialCommunityIcons name="lock-reset" size={42} color={colors.accent} />
             </View>
-            <Text style={styles.title}>{t('fpTitle')}</Text>
-            <Text style={styles.subtitle}>{t('fpSubtitle')}</Text>
-            <View style={[styles.inputWrap, isRTL && styles.rowReverse]}>
-              <MaterialCommunityIcons name="email-outline" size={19} color="#94A3B8" />
+            <Text style={[styles.title, { color: colors.text }]}>{t('fpTitle')}</Text>
+            <Text style={[styles.subtitle, { color: colors.muted }]}>{t('fpSubtitle')}</Text>
+            <View style={[styles.inputWrap, { backgroundColor: colors.background, borderColor: colors.border }, isRTL && styles.rowReverse]}>
+              <MaterialCommunityIcons name="email-outline" size={19} color={colors.muted} />
               <TextInput
                 value={email}
                 onChangeText={setEmail}
                 placeholder={t('authEmail')}
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.faint}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
-                style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]}
+                style={[styles.input, { color: colors.text, textAlign: isRTL ? 'right' : 'left' }]}
               />
             </View>
             {error ? <ErrorText>{error}</ErrorText> : null}
             <PrimaryButton title={t('fpSendCode')} loading={loading} disabled={!email} onPress={() => void submit()} />
-            <Pressable onPress={() => router.back()} style={styles.backBtn}>
-              <MaterialCommunityIcons name={isRTL ? 'arrow-right' : 'arrow-left'} size={17} color="#64748B" />
-              <Text style={styles.backText}>{t('fpBackToLogin')}</Text>
+            <Pressable onPress={() => router.back()} style={[styles.backBtn, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              <MaterialCommunityIcons name={isRTL ? 'arrow-right' : 'arrow-left'} size={17} color={colors.muted} />
+              <Text style={[styles.backText, { color: colors.muted }]}>{t('fpBackToLogin')}</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -94,20 +96,18 @@ export default function ForgotPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  safe: { flex: 1 },
   page: { flexGrow: 1, justifyContent: 'center', padding: 14, paddingTop: 72, paddingBottom: 18 },
-  card: { width: '100%', maxWidth: 440, alignSelf: 'center', padding: 24, borderWidth: 1, borderColor: '#E8EDF3', borderRadius: 18, backgroundColor: '#FFFFFF', alignItems: 'center', gap: 12 },
-  iconCircle: { width: 76, height: 76, borderRadius: 38, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  title: { color: '#111827', fontSize: 22, fontWeight: '800', textAlign: 'center' },
-  subtitle: { color: '#64748B', fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: 6 },
-  inputWrap: { width: '100%', minHeight: 48, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, backgroundColor: '#F8FAFC' },
+  card: { width: '100%', maxWidth: 440, alignSelf: 'center', padding: 24, borderWidth: 1, borderRadius: 20, alignItems: 'center', gap: 14 },
+  iconCircle: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  title: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
+  subtitle: { fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: 6 },
+  inputWrap: { width: '100%', minHeight: 48, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderRadius: 12 },
   rowReverse: { flexDirection: 'row-reverse' },
-  input: { flex: 1, minWidth: 0, color: '#111827', fontSize: 14, paddingVertical: 0 },
-  sentTitle: { color: '#111827', fontSize: 20, fontWeight: '800', textAlign: 'center' },
-  sentSubtitle: { color: '#64748B', fontSize: 13, lineHeight: 19, textAlign: 'center' },
-  maskedEmail: { color: '#2563EB', fontSize: 14, fontWeight: '700', marginBottom: 8 },
+  input: { flex: 1, minWidth: 0, fontSize: 14, paddingVertical: 0 },
+  maskedEmail: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
   resendBtn: { marginTop: 8, padding: 8 },
-  resendText: { color: '#2563EB', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10, padding: 8 },
-  backText: { color: '#64748B', fontSize: 13, fontWeight: '600' },
+  resendText: { fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
+  backBtn: { alignItems: 'center', gap: 4, marginTop: 10, padding: 8 },
+  backText: { fontSize: 13, fontWeight: '600' },
 });
