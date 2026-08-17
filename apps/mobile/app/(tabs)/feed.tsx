@@ -18,7 +18,7 @@ export default function FeedScreen() {
   const { colors } = useTheme();
   const { t } = useI18n();
   const router = useRouter();
-  const [section, setSection] = useState<'friends' | 'public'>('friends');
+  const [section, setSection] = useState<'friends' | 'public'>('public');
   const [posts, setPosts] = useState<Post[]>([]);
   const [stories, setStories] = useState<StoryGroup[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -115,7 +115,7 @@ export default function FeedScreen() {
           <>
             <StoryRing stories={stories} />
             <View style={[styles.sectionRow, { borderBottomColor: colors.border }]}>
-              {(['friends', 'public'] as const).map((s) => (
+              {(['public', 'friends'] as const).map((s) => (
                 <Pressable key={s} onPress={() => setSection(s)} style={[styles.sectionTab, section === s && { borderBottomColor: colors.accent, borderBottomWidth: 2 }]}>
                   <Text style={[styles.sectionLabel, { color: section === s ? colors.accent : colors.muted }]}>{s === 'friends' ? t('friends') : t('explore')}</Text>
                 </Pressable>

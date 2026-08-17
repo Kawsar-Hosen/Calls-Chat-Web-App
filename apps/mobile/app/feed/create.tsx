@@ -2,7 +2,7 @@ import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import { useAuth } from '@/auth';
@@ -24,6 +24,41 @@ const ACTION_BUTTONS = [
   { key: 'emoji', icon: 'emoticon-outline' as const, labelKey: 'emoji' },
 ] as const;
 
+const EMOJI_GRID = [
+  '😀','😂','🥹','😍','🤩','😘','😎','🤓','😇','🥳',
+  '😏','😒','😞','😔','😟','😕','🙁','😣','😖','😫',
+  '🥺','😢','😭','😤','😠','🤯','😳','🥵','🥶','😱',
+  '🤔','🤫','🤭','🫡','🤗','🫠','😴','🤢','🤮','🤧',
+  '👍','👎','👏','🙌','🤝','💪','🫶','❤️','🔥','💯',
+  '🎉','🎊','✨','⭐','🌟','💫','🌈','☀️','🌙','💡',
+];
+
+const FEELINGS = [
+  { emoji: '😊', label: 'happy' },
+  { emoji: '😢', label: 'sad' },
+  { emoji: '😡', label: 'angry' },
+  { emoji: '🥳', label: 'excited' },
+  { emoji: '😍', label: 'in love' },
+  { emoji: '🤔', label: 'thinking' },
+  { emoji: '😴', label: 'tired' },
+  { emoji: '🙏', label: 'grateful' },
+  { emoji: '💪', label: 'strong' },
+  { emoji: '😎', label: 'cool' },
+  { emoji: '🥺', label: 'emotional' },
+  { emoji: '🫠', label: 'melting' },
+];
+
+const STICKERS = [
+  ['🐱','🐶','🦊','🐻','🐼','🐨'],
+  ['🌸','🌺','🌻','🌹','🌷','🍄'],
+  ['🍕','🍔','🍟','🌮','🍩','🎂'],
+  ['⚽','🏀','🎮','🎵','🎸','🏆'],
+  ['🚗','✈️','🚀','🏠','🌍','💎'],
+  ['❤️','🧡','💛','💚','💙','💜'],
+];
+
+type PickerType = null | 'emoji' | 'feeling' | 'sticker';
+
 export default function CreatePostScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
@@ -33,6 +68,8 @@ export default function CreatePostScreen() {
   const [media, setMedia] = useState<MediaPreview[]>([]);
   const [visibility, setVisibility] = useState<'friends' | 'public'>('public');
   const [posting, setPosting] = useState(false);
+  const [activePicker, setActivePicker] = useState<PickerType>(null);
+  const [activeFeeling, setActiveFeeling] = useState<{ emoji: string; label: string } | null>(null);
 
   const pickImages = async () => {
     const remaining = 4 - media.length;
@@ -66,7 +103,19 @@ export default function CreatePostScreen() {
     switch (key) {
       case 'photo': pickImages(); break;
       case 'video': pickVideo(); break;
+      case 'sticker': setActivePicker(activePicker === 'sticker' ? null : 'sticker'); break;
+      case 'feeling': setActivePicker(activePicker === 'feeling' ? null : 'feeling'); break;
+      case 'emoji': setActivePicker(activePicker === 'emoji' ? null : 'emoji'); break;
     }
+  };
+
+  const insertEmoji = (emoji: string) => {
+    setContent((prev) => prev + emoji);
+  };
+
+  const selectFeeling = (feeling: { emoji: string; label: string }) => {
+    setActiveFeeling(activeFeeling?.label === feeling.label ? null : feeling);
+    setActivePicker(null);
   };
 
   const removeMedia = (index: number) => {
@@ -84,7 +133,8 @@ export default function CreatePostScreen() {
         const uploaded = await api.uploadMedia(m.uri, `media_${Date.now()}.${ext}`, mime);
         mediaIds.push(uploaded.id);
       }
-      await api.createPost({ content: content.trim() || '', mediaIds, visibility });
+      const feelingPrefix = activeFeeling ? `${activeFeeling.emoji} ${activeFeeling.label}\n` : '';
+      await api.createPost({ content: feelingPrefix + (content.trim() || ''), mediaIds, visibility });
       router.back();
     } catch {} finally { setPosting(false); }
   };
@@ -198,6 +248,82 @@ export default function CreatePostScreen() {
           </View>
         </View>
 
+        {activeFeeling ? (
+          <View style={[styles.feelingBadge, { backgroundColor: colors.accentSoft }]}>
+            <Text style={{ fontSize: 16 }}>{activeFeeling.emoji}</Text>
+            <Text style={[styles.feelingText, { color: colors.accent }]}>{activeFeeling.label}</Text>
+            <Pressable onPress={() => setActiveFeeling(null)}>
+              <MaterialCommunityIcons name="close" size={16} color={colors.accent} />
+            </Pressable>
+          </View>
+        ) : null}
+
+        {activePicker === 'emoji' ? (
+          <View style={[styles.pickerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.pickerHeader}>
+              <Text style={[styles.pickerTitle, { color: colors.text }]}>{t('emoji')}</Text>
+              <Pressable onPress={() => setActivePicker(null)}>
+                <MaterialCommunityIcons name="close" size={20} color={colors.muted} />
+              </Pressable>
+            </View>
+            <FlatList
+              data={EMOJI_GRID}
+              numColumns={8}
+              scrollEnabled={false}
+              keyExtractor={(item, i) => `${item}_${i}`}
+              renderItem={({ item }) => (
+                <Pressable onPress={() => insertEmoji(item)} style={styles.emojiCell}>
+                  <Text style={styles.emojiText}>{item}</Text>
+                </Pressable>
+              )}
+              contentContainerStyle={styles.emojiGrid}
+            />
+          </View>
+        ) : null}
+
+        {activePicker === 'feeling' ? (
+          <View style={[styles.pickerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.pickerHeader}>
+              <Text style={[styles.pickerTitle, { color: colors.text }]}>{t('feelings')}</Text>
+              <Pressable onPress={() => setActivePicker(null)}>
+                <MaterialCommunityIcons name="close" size={20} color={colors.muted} />
+              </Pressable>
+            </View>
+            <View style={styles.feelingsGrid}>
+              {FEELINGS.map((f) => (
+                <Pressable
+                  key={f.label}
+                  onPress={() => selectFeeling(f)}
+                  style={[styles.feelingItem, activeFeeling?.label === f.label && { backgroundColor: colors.accentSoft, borderColor: colors.accent }]}
+                >
+                  <Text style={styles.feelingEmoji}>{f.emoji}</Text>
+                  <Text style={[styles.feelingItemLabel, { color: activeFeeling?.label === f.label ? colors.accent : colors.text }]}>{f.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {activePicker === 'sticker' ? (
+          <View style={[styles.pickerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.pickerHeader}>
+              <Text style={[styles.pickerTitle, { color: colors.text }]}>{t('stickers')}</Text>
+              <Pressable onPress={() => setActivePicker(null)}>
+                <MaterialCommunityIcons name="close" size={20} color={colors.muted} />
+              </Pressable>
+            </View>
+            {STICKERS.map((row, ri) => (
+              <View key={ri} style={styles.stickerRow}>
+                {row.map((s) => (
+                  <Pressable key={s} onPress={() => insertEmoji(s)} style={styles.stickerCell}>
+                    <Text style={styles.stickerText}>{s}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
@@ -236,4 +362,19 @@ const styles = StyleSheet.create({
   visOptionText: { flex: 1 },
   visOptionTitle: { fontSize: 14, fontWeight: '700' },
   visOptionDesc: { fontSize: 11, marginTop: 1 },
+  feelingBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: 14, marginTop: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, alignSelf: 'flex-start' },
+  feelingText: { fontSize: 13, fontWeight: '700', textTransform: 'capitalize' },
+  pickerCard: { marginHorizontal: 14, marginTop: 12, borderRadius: 14, borderWidth: 1, padding: 14 },
+  pickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  pickerTitle: { fontSize: 14, fontWeight: '700' },
+  emojiGrid: { gap: 2 },
+  emojiCell: { flex: 1, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', maxWidth: '12.5%' },
+  emojiText: { fontSize: 24 },
+  feelingsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  feelingItem: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'transparent' },
+  feelingEmoji: { fontSize: 18 },
+  feelingItemLabel: { fontSize: 13, fontWeight: '600', textTransform: 'capitalize' },
+  stickerRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 8 },
+  stickerCell: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  stickerText: { fontSize: 32 },
 });

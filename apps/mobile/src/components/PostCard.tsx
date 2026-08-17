@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Fragment, memo, useCallback, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { api } from '@/api';
 import { useAuth } from '@/auth';
@@ -10,6 +10,7 @@ import type { Post } from '@/types';
 import { Avatar } from '@/ui';
 import { CommentSheet } from '@/components/CommentSheet';
 import { ShareSheet } from '@/components/ShareSheet';
+import { playSound } from '@/sounds';
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
@@ -24,6 +25,34 @@ function timeAgo(dateStr: string): string {
   return `${days}d`;
 }
 
+function AnimatedReaction({ emoji, onDone }: { emoji: string; onDone: () => void }) {
+  const scale = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.spring(scale, { toValue: 1.6, friction: 3, tension: 140, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 100, useNativeDriver: true }),
+        Animated.timing(translateY, { toValue: -10, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      ]),
+      Animated.parallel([
+        Animated.spring(scale, { toValue: 1, friction: 4, tension: 80, useNativeDriver: true }),
+        Animated.timing(translateY, { toValue: 0, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      ]),
+      Animated.delay(400),
+      Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => onDone());
+  }, []);
+
+  return (
+    <Animated.View style={[styles.floatingEmoji, { transform: [{ scale }, { translateY }], opacity }]}>
+      <Text style={styles.floatingEmojiText}>{emoji}</Text>
+    </Animated.View>
+  );
+}
+
 export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post; onRefresh?: () => void }) {
   const { user } = useAuth();
   const { colors } = useTheme();
@@ -33,6 +62,8 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
   const [expanded, setExpanded] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [floatingReactions, setFloatingReactions] = useState<{ id: number; emoji: string }[]>([]);
+  const floatIdRef = useRef(0);
   const [localOverrides, setLocalOverrides] = useState<{ myLikeEmoji?: string | null; likeCount?: number; myBookmarked?: boolean; myShared?: boolean; shareCount?: number }>({});
 
   const effectiveMyLike = localOverrides.myLikeEmoji !== undefined ? localOverrides.myLikeEmoji : post.myLikeEmoji;
@@ -46,6 +77,9 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
     const newEmoji = prev === emoji ? null : emoji;
     const delta = prev ? (newEmoji ? 0 : -1) : (newEmoji ? 1 : 0);
     setLocalOverrides((o) => ({ ...o, myLikeEmoji: newEmoji, likeCount: post.likeCount + delta }));
+    playSound('react');
+    const id = ++floatIdRef.current;
+    setFloatingReactions((prev) => [...prev, { id, emoji }]);
     try { await api.reactPost(post.id, emoji); } catch { onRefresh?.(); }
   }, [post.id, post.likeCount, effectiveMyLike, onRefresh]);
 
@@ -61,6 +95,10 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
     try { await api.sharePost(post.id); } catch { onRefresh?.(); }
   }, [post.id, post.shareCount, effectiveShared, onRefresh]);
 
+  const removeFloat = useCallback((id: number) => {
+    setFloatingReactions((prev) => prev.filter((f) => f.id !== id));
+  }, []);
+
   const isLong = (post.content?.length ?? 0) > 200;
   const displayContent = isLong && !expanded ? post.content?.slice(0, 200) + '...' : post.content;
 
@@ -69,7 +107,6 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
   return (
     <>
     <Pressable onPress={() => router.push({ pathname: '/feed/[id]' as any, params: { id: post.id } })} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      {/* Header */}
       <View style={styles.header}>
         <Avatar name={post.author.displayName} uri={post.author.avatarUrl} size={40} online={post.author.isOnline} />
         <View style={styles.headerInfo}>
@@ -82,7 +119,6 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
         </View>
       </View>
 
-      {/* Content */}
       {displayContent ? (
         <View style={styles.contentWrap}>
           <Text style={[styles.content, { color: colors.text }]}>{displayContent}</Text>
@@ -94,7 +130,6 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
         </View>
       ) : null}
 
-      {/* Media Grid */}
       {mediaCount > 0 ? (
         <View style={[styles.mediaGrid, mediaCount === 1 && styles.mediaSingle]}>
           {post.media.slice(0, 4).map((m, i) => (
@@ -110,7 +145,6 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
         </View>
       ) : null}
 
-      {/* Reaction summary */}
       {effectiveLikeCount > 0 || post.commentCount > 0 || effectiveShareCount > 0 ? (
         <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
           <View style={styles.statsLeft}>
@@ -128,7 +162,6 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
         </View>
       ) : null}
 
-      {/* Action bar */}
       <View style={[styles.actionBar, { borderTopColor: colors.border }]}>
         <Pressable onPress={() => setShowReactions(!showReactions)} style={styles.actionBtn}>
           <MaterialCommunityIcons name={effectiveMyLike ? 'heart' : 'heart-outline'} size={22} color={effectiveMyLike ? '#EF4444' : colors.muted} />
@@ -148,13 +181,20 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
         </Pressable>
       </View>
 
-      {/* Reaction picker */}
       {showReactions ? (
         <View style={[styles.reactionPicker, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {REACTIONS.map((emoji) => (
+          {REACTIONS.map((emoji, i) => (
             <Pressable key={emoji} onPress={() => { toggleReaction(emoji); setShowReactions(false); }} style={styles.reactionBtn}>
               <Text style={styles.reactionEmoji}>{emoji}</Text>
             </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      {floatingReactions.length > 0 ? (
+        <View style={styles.floatingContainer} pointerEvents="none">
+          {floatingReactions.map((fr) => (
+            <AnimatedReaction key={fr.id} emoji={fr.emoji} onDone={() => removeFloat(fr.id)} />
           ))}
         </View>
       ) : null}
@@ -166,7 +206,7 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
 });
 
 const styles = StyleSheet.create({
-  card: { marginHorizontal: 12, marginTop: 12, borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  card: { marginHorizontal: 12, marginTop: 12, borderRadius: 16, borderWidth: 1, overflow: 'visible' },
   header: { flexDirection: 'row', alignItems: 'center', padding: 14, paddingBottom: 10, gap: 10 },
   headerInfo: { flex: 1 },
   authorName: { fontSize: 14, fontWeight: '700' },
@@ -195,6 +235,9 @@ const styles = StyleSheet.create({
   actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },
   actionLabel: { fontSize: 12, fontWeight: '600' },
   reactionPicker: { flexDirection: 'row', justifyContent: 'center', gap: 8, padding: 10, borderTopWidth: StyleSheet.hairlineWidth },
-  reactionBtn: { padding: 4 },
-  reactionEmoji: { fontSize: 28 },
+  reactionBtn: { padding: 6, borderRadius: 20 },
+  reactionEmoji: { fontSize: 30 },
+  floatingContainer: { position: 'absolute', bottom: 60, right: 20, width: 50, height: 50, alignItems: 'center', justifyContent: 'center' },
+  floatingEmoji: { position: 'absolute' },
+  floatingEmojiText: { fontSize: 36 },
 });
