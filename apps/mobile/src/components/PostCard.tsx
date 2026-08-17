@@ -133,15 +133,15 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
             <Text style={[styles.time, { color: colors.faint }]}>{timeAgo(post.createdAt)}</Text>
             <Text style={[styles.dot, { color: colors.faint }]}>·</Text>
             <MaterialCommunityIcons name={post.visibility === 'friends' ? 'account-group' : 'earth'} size={12} color={colors.faint} />
+            {post.author.id !== user?.id ? (
+              <Pressable onPress={toggleFollow} disabled={followLoading} style={[styles.followBtnInline, { backgroundColor: isFollowing ? colors.elevated : colors.accentSoft, borderColor: isFollowing ? colors.border : colors.accent }]}>
+                <Text style={[styles.followBtnInlineText, { color: isFollowing ? colors.muted : colors.accent }]}>
+                  {isFollowing ? t('following') : t('follow')}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
-        {post.author.id !== user?.id ? (
-          <Pressable onPress={toggleFollow} disabled={followLoading} style={[styles.followBtnSmall, { backgroundColor: isFollowing ? colors.elevated : colors.accentSoft, borderColor: isFollowing ? colors.border : colors.accent }]}>
-            <Text style={[styles.followBtnSmallText, { color: isFollowing ? colors.muted : colors.accent }]}>
-              {isFollowing ? t('following') : t('follow')}
-            </Text>
-          </Pressable>
-        ) : null}
       </View>
 
       {displayContent ? (
@@ -239,8 +239,8 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   time: { fontSize: 12 },
   dot: { fontSize: 12 },
-  followBtnSmall: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
-  followBtnSmallText: { fontSize: 12, fontWeight: '700' },
+  followBtnInline: { marginLeft: 6, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12, borderWidth: 1 },
+  followBtnInlineText: { fontSize: 11, fontWeight: '700' },
   contentWrap: { paddingHorizontal: 14, paddingBottom: 10 },
   content: { fontSize: 14, lineHeight: 20 },
   seeMore: { fontSize: 13, fontWeight: '600', marginTop: 4 },
