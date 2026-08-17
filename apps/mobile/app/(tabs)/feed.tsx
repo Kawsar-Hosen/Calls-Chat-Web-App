@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { api } from '@/api';
 import { useAuth } from '@/auth';
+import { useSocket } from '@/socket';
 import { useTheme } from '@/theme';
 import { useI18n } from '@/i18n';
 import type { Post, StoryGroup } from '@/types';
@@ -44,6 +45,32 @@ export default function FeedScreen() {
   }, [section]);
 
   useEffect(() => { load(); }, [load]);
+
+  const { subscribe } = useSocket();
+
+  useEffect(() => {
+    return subscribe((event) => {
+      if (event.type === 'post.created') {
+        setPosts((prev) => {
+          if (prev.some((p) => p.id === event.post.id)) return prev;
+          return [event.post, ...prev];
+        });
+      } else if (event.type === 'post.deleted') {
+        setPosts((prev) => prev.filter((p) => p.id !== event.postId));
+      } else if (event.type === 'post.updated') {
+        setPosts((prev) => prev.map((p) => p.id === event.post.id ? event.post : p));
+      } else if (event.type === 'reaction.updated') {
+        setPosts((prev) => prev.map((p) => {
+          if (p.id !== event.postId) return p;
+          return { ...p, likeCount: event.likeCount, reactions: [...p.reactions.filter((r) => r.userId !== event.userId), { emoji: event.emoji, userId: event.userId }] };
+        }));
+      } else if (event.type === 'comment.created') {
+        setPosts((prev) => prev.map((p) => p.id === event.postId ? { ...p, commentCount: p.commentCount + 1 } : p));
+      } else if (event.type === 'story.created') {
+        api.feedStories().then(setStories).catch(() => {});
+      }
+    });
+  }, [subscribe]);
 
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore) return;

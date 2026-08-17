@@ -12,6 +12,7 @@ from app.schemas import (BookmarkResponse, CommentPage, CommentView, CommentReac
                          CreateCommentRequest, CreatePostRequest, CreateStoryRequest, PostPage,
                          PostReactionView, PostView, PostMediaView, ReactRequest, ReactResponse,
                          ShareResponse, StoryGroupView, StoryView_, UserPublic)
+from app.push import push_to_users
 from app.services import are_friends
 from app.storage import storage
 
@@ -228,6 +229,12 @@ async def react_post(
     else:
         db.add(PostLike(id=new_id(), post_id=post_id, user_id=user.id, emoji=body.emoji, created_at=utcnow()))
         await db.commit()
+    if post.author_id != user.id:
+        await push_to_users(db, [post.author_id], {
+            "notification": {"title": "New reaction", "body": f"{user.display_name} reacted {body.emoji} to your post"},
+            "android": {"notification": {"channel_id": "messages"}},
+            "data": {"type": "post.reacted", "post_id": post_id, "user_id": user.id},
+        })
     like_count = int((await db.scalar(select(func.count(PostLike.id)).where(PostLike.post_id == post_id))) or 0)
     reactions = (await db.scalars(select(PostLike).where(PostLike.post_id == post_id))).all()
     my_like = await db.scalar(select(PostLike).where(PostLike.post_id == post_id, PostLike.user_id == user.id))
@@ -285,6 +292,12 @@ async def add_comment(
     db.add(comment)
     await db.commit()
     await db.refresh(comment)
+    if post.author_id != user.id:
+        await push_to_users(db, [post.author_id], {
+            "notification": {"title": "New comment", "body": f"{user.display_name} commented on your post"},
+            "android": {"notification": {"channel_id": "messages"}},
+            "data": {"type": "post.commented", "post_id": post_id, "user_id": user.id},
+        })
     return await _comment_view(db, comment)
 
 
@@ -348,6 +361,12 @@ async def share_post(
     else:
         db.add(PostShare(id=new_id(), post_id=post_id, user_id=user.id, created_at=utcnow()))
         await db.commit()
+        if post.author_id != user.id:
+            await push_to_users(db, [post.author_id], {
+                "notification": {"title": "New share", "body": f"{user.display_name} shared your post"},
+                "android": {"notification": {"channel_id": "messages"}},
+                "data": {"type": "post.shared", "post_id": post_id, "user_id": user.id},
+            })
     count = int((await db.scalar(select(func.count(PostShare.id)).where(PostShare.post_id == post_id))) or 0)
     my_shared = await db.scalar(select(PostShare).where(PostShare.post_id == post_id, PostShare.user_id == user.id))
     return ShareResponse(share_count=count, my_shared=bool(my_shared))

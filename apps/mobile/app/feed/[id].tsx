@@ -131,7 +131,7 @@ export default function PostDetailScreen() {
 
   const deleteComment = useCallback(async (commentId: string) => {
     if (!id) return;
-    Alert.alert(t('done'), '', [
+    Alert.alert(t('deleteComment') || 'Delete comment', t('deleteCommentConfirm') || 'Are you sure?', [
       { text: t('cancel'), style: 'cancel' },
       {
         text: t('deleteAccount'), style: 'destructive', onPress: async () => {
@@ -155,13 +155,11 @@ export default function PostDetailScreen() {
 
   const deletePost = useCallback(() => {
     if (!id) return;
-    Alert.alert(t('deleteAccount'), '', [
+    Alert.alert(t('deletePost') || 'Delete post', t('deletePostConfirm') || 'Are you sure?', [
       { text: t('cancel'), style: 'cancel' },
-      {
-        text: t('deleteAccount'), style: 'destructive', onPress: async () => {
-          try { await api.deletePost(id); router.back(); } catch {}
-        },
-      },
+      { text: t('deleteAccount'), style: 'destructive', onPress: async () => {
+        try { await api.deletePost(id); router.back(); } catch {}
+      }},
     ]);
   }, [id, t, router]);
 
@@ -201,7 +199,21 @@ export default function PostDetailScreen() {
           keyExtractor={(item) => item.id}
           renderItem={renderComment}
           ListHeaderComponent={post ? (
-            <PostCard post={post} onRefresh={onRefresh} />
+            <>
+              <PostCard post={post} onRefresh={onRefresh} />
+              {user?.id === post.author.id ? (
+                <View style={[styles.ownPostActions, { borderBottomColor: colors.border }]}>
+                  <Pressable onPress={() => router.push({ pathname: '/feed/edit' as any, params: { id: post.id, content: post.content ?? '' } })} style={styles.ownAction}>
+                    <MaterialCommunityIcons name="pencil-outline" size={18} color={colors.accent} />
+                    <Text style={[styles.ownActionText, { color: colors.accent }]}>{t('editProfile')}</Text>
+                  </Pressable>
+                  <Pressable onPress={deletePost} style={styles.ownAction}>
+                    <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.danger} />
+                    <Text style={[styles.ownActionText, { color: colors.danger }]}>{t('deleteAccount')}</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </>
           ) : null}
           ListEmptyComponent={null}
           ListFooterComponent={loadingMore ? <ActivityIndicator style={{ marginVertical: 20 }} color={colors.accent} /> : null}
@@ -266,4 +278,7 @@ const styles = StyleSheet.create({
   inputBar: { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 12, paddingVertical: 10, gap: 8, borderTopWidth: StyleSheet.hairlineWidth },
   input: { flex: 1, minHeight: 38, maxHeight: 100, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, paddingTop: 8, paddingBottom: 8, fontSize: 14, lineHeight: 20 },
   sendBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  ownPostActions: { flexDirection: 'row', justifyContent: 'center', gap: 24, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  ownAction: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  ownActionText: { fontSize: 13, fontWeight: '700' },
 });

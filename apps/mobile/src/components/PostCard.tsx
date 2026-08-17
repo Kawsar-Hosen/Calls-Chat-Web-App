@@ -33,18 +33,33 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
   const [expanded, setExpanded] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [localOverrides, setLocalOverrides] = useState<{ myLikeEmoji?: string | null; likeCount?: number; myBookmarked?: boolean; myShared?: boolean; shareCount?: number }>({});
+
+  const effectiveMyLike = localOverrides.myLikeEmoji !== undefined ? localOverrides.myLikeEmoji : post.myLikeEmoji;
+  const effectiveLikeCount = localOverrides.likeCount !== undefined ? localOverrides.likeCount : post.likeCount;
+  const effectiveBookmarked = localOverrides.myBookmarked !== undefined ? localOverrides.myBookmarked : post.myBookmarked;
+  const effectiveShared = localOverrides.myShared !== undefined ? localOverrides.myShared : post.myShared;
+  const effectiveShareCount = localOverrides.shareCount !== undefined ? localOverrides.shareCount : post.shareCount;
 
   const toggleReaction = useCallback(async (emoji: string) => {
-    try { await api.reactPost(post.id, emoji); onRefresh?.(); } catch {}
-  }, [post.id, onRefresh]);
+    const prev = effectiveMyLike;
+    const newEmoji = prev === emoji ? null : emoji;
+    const delta = prev ? (newEmoji ? 0 : -1) : (newEmoji ? 1 : 0);
+    setLocalOverrides((o) => ({ ...o, myLikeEmoji: newEmoji, likeCount: post.likeCount + delta }));
+    try { await api.reactPost(post.id, emoji); } catch { onRefresh?.(); }
+  }, [post.id, post.likeCount, effectiveMyLike, onRefresh]);
 
   const toggleBookmark = useCallback(async () => {
-    try { await api.bookmarkPost(post.id); onRefresh?.(); } catch {}
-  }, [post.id, onRefresh]);
+    const newVal = !effectiveBookmarked;
+    setLocalOverrides((o) => ({ ...o, myBookmarked: newVal }));
+    try { await api.bookmarkPost(post.id); } catch { onRefresh?.(); }
+  }, [post.id, effectiveBookmarked, onRefresh]);
 
   const toggleShare = useCallback(async () => {
-    try { await api.sharePost(post.id); onRefresh?.(); } catch {}
-  }, [post.id, onRefresh]);
+    if (effectiveShared) return;
+    setLocalOverrides((o) => ({ ...o, myShared: true, shareCount: post.shareCount + 1 }));
+    try { await api.sharePost(post.id); } catch { onRefresh?.(); }
+  }, [post.id, post.shareCount, effectiveShared, onRefresh]);
 
   const isLong = (post.content?.length ?? 0) > 200;
   const displayContent = isLong && !expanded ? post.content?.slice(0, 200) + '...' : post.content;
@@ -96,19 +111,19 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
       ) : null}
 
       {/* Reaction summary */}
-      {post.likeCount > 0 || post.commentCount > 0 || post.shareCount > 0 ? (
+      {effectiveLikeCount > 0 || post.commentCount > 0 || effectiveShareCount > 0 ? (
         <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
           <View style={styles.statsLeft}>
-            {post.likeCount > 0 ? (
+            {effectiveLikeCount > 0 ? (
               <View style={styles.reactionBadge}>
-                <Text style={{ fontSize: 14 }}>{post.myLikeEmoji || '👍'}</Text>
-                <Text style={[styles.statNum, { color: colors.muted }]}>{post.likeCount}</Text>
+                <Text style={{ fontSize: 14 }}>{effectiveMyLike || '👍'}</Text>
+                <Text style={[styles.statNum, { color: colors.muted }]}>{effectiveLikeCount}</Text>
               </View>
             ) : null}
           </View>
           <View style={styles.statsRight}>
             {post.commentCount > 0 ? <Text style={[styles.statText, { color: colors.muted }]}>{post.commentCount} {t('comments')}</Text> : null}
-            {post.shareCount > 0 ? <Text style={[styles.statText, { color: colors.muted }]}>{post.shareCount} {t('shares')}</Text> : null}
+            {effectiveShareCount > 0 ? <Text style={[styles.statText, { color: colors.muted }]}>{effectiveShareCount} {t('shares')}</Text> : null}
           </View>
         </View>
       ) : null}
@@ -116,20 +131,20 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
       {/* Action bar */}
       <View style={[styles.actionBar, { borderTopColor: colors.border }]}>
         <Pressable onPress={() => setShowReactions(!showReactions)} style={styles.actionBtn}>
-          <MaterialCommunityIcons name={post.myLikeEmoji ? 'heart' : 'heart-outline'} size={22} color={post.myLikeEmoji ? '#EF4444' : colors.muted} />
-          <Text style={[styles.actionLabel, { color: post.myLikeEmoji ? '#EF4444' : colors.muted }]}>{t('like')}</Text>
+          <MaterialCommunityIcons name={effectiveMyLike ? 'heart' : 'heart-outline'} size={22} color={effectiveMyLike ? '#EF4444' : colors.muted} />
+          <Text style={[styles.actionLabel, { color: effectiveMyLike ? '#EF4444' : colors.muted }]}>{t('like')}</Text>
         </Pressable>
         <Pressable onPress={() => setShowComments(true)} style={styles.actionBtn}>
           <MaterialCommunityIcons name="comment-outline" size={22} color={colors.muted} />
           <Text style={[styles.actionLabel, { color: colors.muted }]}>{t('comment')}</Text>
         </Pressable>
         <Pressable onPress={() => setShowShare(true)} style={styles.actionBtn}>
-          <MaterialCommunityIcons name={post.myShared ? 'share' : 'share-outline'} size={22} color={post.myShared ? colors.accent : colors.muted} />
-          <Text style={[styles.actionLabel, { color: post.myShared ? colors.accent : colors.muted }]}>{t('share')}</Text>
+          <MaterialCommunityIcons name={effectiveShared ? 'share' : 'share-outline'} size={22} color={effectiveShared ? colors.accent : colors.muted} />
+          <Text style={[styles.actionLabel, { color: effectiveShared ? colors.accent : colors.muted }]}>{t('share')}</Text>
         </Pressable>
         <Pressable onPress={toggleBookmark} style={styles.actionBtn}>
-          <MaterialCommunityIcons name={post.myBookmarked ? 'bookmark' : 'bookmark-outline'} size={22} color={post.myBookmarked ? '#F59E0B' : colors.muted} />
-          <Text style={[styles.actionLabel, { color: post.myBookmarked ? '#F59E0B' : colors.muted }]}>{t('save')}</Text>
+          <MaterialCommunityIcons name={effectiveBookmarked ? 'bookmark' : 'bookmark-outline'} size={22} color={effectiveBookmarked ? '#F59E0B' : colors.muted} />
+          <Text style={[styles.actionLabel, { color: effectiveBookmarked ? '#F59E0B' : colors.muted }]}>{t('save')}</Text>
         </Pressable>
       </View>
 
@@ -145,7 +160,7 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
       ) : null}
     </Pressable>
     <CommentSheet visible={showComments} postId={post.id} onClose={() => setShowComments(false)} {...(onRefresh ? { onCommentAdded: onRefresh } : {})} />
-    <ShareSheet visible={showShare} postId={post.id} shareCount={post.shareCount} myShared={post.myShared} onClose={() => setShowShare(false)} {...(onRefresh ? { onShared: onRefresh } : {})} />
+    <ShareSheet visible={showShare} postId={post.id} shareCount={effectiveShareCount} myShared={effectiveShared} onClose={() => setShowShare(false)} {...(onRefresh ? { onShared: onRefresh } : {})} />
     </>
   );
 });

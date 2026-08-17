@@ -54,6 +54,7 @@ export default function SettingsScreen() {
         <SettingRow icon="music-note-outline" title={t('soundEffects')} detail={t('requestSound')} onPress={() => router.push('/settings/sounds')} rtl={isRTL} />
         <SettingRow icon="translate" title={t('language')} detail={`${currentLanguage.flag}  ${currentLanguage.nativeLabel}`} onPress={() => setLanguageOpen(true)} rtl={isRTL} />
         <SettingRow icon="account-edit-outline" title={t('editProfile')} detail={user.email ?? '@' + user.username} onPress={openEditProfile} rtl={isRTL} />
+        <SettingRow icon="newspaper-variant-outline" title={t('feed')} detail={t('feed')} onPress={() => router.push('/(tabs)/feed')} rtl={isRTL} />
 
         <Pressable onPress={() => setLogoutOpen(true)} style={({ pressed }) => [styles.logout, direction, { borderColor: colors.border, opacity: pressed ? 0.55 : 1 }]}><MaterialCommunityIcons name="logout" size={20} color={colors.danger} /><Text style={{ color: colors.danger, fontWeight: '800' }}>{t('signOut')}</Text></Pressable>
 
