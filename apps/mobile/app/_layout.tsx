@@ -43,6 +43,9 @@ function Navigator() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="chat/[id]" />
+        <Stack.Screen name="feed/[id]" />
+        <Stack.Screen name="feed/create" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="feed/story" options={{ presentation: 'fullScreenModal' }} />
       </Stack>
       <CallListener />
       <PushListener />

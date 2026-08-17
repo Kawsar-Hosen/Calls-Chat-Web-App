@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { memo, useCallback, useState } from 'react';
+import { Fragment, memo, useCallback, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { api } from '@/api';
@@ -8,6 +8,8 @@ import { useTheme } from '@/theme';
 import { useI18n } from '@/i18n';
 import type { Post } from '@/types';
 import { Avatar } from '@/ui';
+import { CommentSheet } from '@/components/CommentSheet';
+import { ShareSheet } from '@/components/ShareSheet';
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
@@ -29,6 +31,8 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
   const router = useRouter();
   const [showReactions, setShowReactions] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [showShare, setShowShare] = useState(false);
 
   const toggleReaction = useCallback(async (emoji: string) => {
     try { await api.reactPost(post.id, emoji); onRefresh?.(); } catch {}
@@ -48,6 +52,7 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
   const mediaCount = post.media.length;
 
   return (
+    <>
     <Pressable onPress={() => router.push({ pathname: '/feed/[id]' as any, params: { id: post.id } })} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       {/* Header */}
       <View style={styles.header}>
@@ -114,11 +119,11 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
           <MaterialCommunityIcons name={post.myLikeEmoji ? 'heart' : 'heart-outline'} size={22} color={post.myLikeEmoji ? '#EF4444' : colors.muted} />
           <Text style={[styles.actionLabel, { color: post.myLikeEmoji ? '#EF4444' : colors.muted }]}>{t('like')}</Text>
         </Pressable>
-        <Pressable onPress={() => router.push({ pathname: '/feed/[id]' as any, params: { id: post.id } })} style={styles.actionBtn}>
+        <Pressable onPress={() => setShowComments(true)} style={styles.actionBtn}>
           <MaterialCommunityIcons name="comment-outline" size={22} color={colors.muted} />
           <Text style={[styles.actionLabel, { color: colors.muted }]}>{t('comment')}</Text>
         </Pressable>
-        <Pressable onPress={toggleShare} style={styles.actionBtn}>
+        <Pressable onPress={() => setShowShare(true)} style={styles.actionBtn}>
           <MaterialCommunityIcons name={post.myShared ? 'share' : 'share-outline'} size={22} color={post.myShared ? colors.accent : colors.muted} />
           <Text style={[styles.actionLabel, { color: post.myShared ? colors.accent : colors.muted }]}>{t('share')}</Text>
         </Pressable>
@@ -139,6 +144,9 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
         </View>
       ) : null}
     </Pressable>
+    <CommentSheet visible={showComments} postId={post.id} onClose={() => setShowComments(false)} {...(onRefresh ? { onCommentAdded: onRefresh } : {})} />
+    <ShareSheet visible={showShare} postId={post.id} shareCount={post.shareCount} myShared={post.myShared} onClose={() => setShowShare(false)} {...(onRefresh ? { onShared: onRefresh } : {})} />
+    </>
   );
 });
 
