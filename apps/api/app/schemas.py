@@ -446,3 +446,30 @@ class StoryGroupView(BaseModel):
     author: UserPublic
     stories: list[StoryView_]
     has_unviewed: bool = False
+
+
+# ── Follow ─────────────────────────────────────────────────────
+
+
+class FollowResponse(BaseModel):
+    following: bool
+    follower_count: int
+    following_count: int
+
+
+class FollowUserView(UserPublic):
+    followed_at: datetime
+
+
+class FollowListPage(BaseModel):
+    items: list[FollowUserView]
+    next_cursor: str | None
+
+
+class UserProfileView(BaseModel):
+    user: UserPublic
+    follower_count: int
+    following_count: int
+    post_count: int
+    is_following: bool
+    is_self: bool

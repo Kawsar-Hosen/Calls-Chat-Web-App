@@ -6,12 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.dependencies import get_current_user
-from app.models import (CommentLike, Friendship, MediaAttachment, Post, PostBookmark, PostComment, PostLike,
+from app.models import (CommentLike, Follow, Friendship, MediaAttachment, Post, PostBookmark, PostComment, PostLike,
                         PostMedia, PostShare, Story, StoryView, User, new_id, utcnow)
 from app.schemas import (BookmarkResponse, CommentPage, CommentView, CommentReactionView,
-                         CreateCommentRequest, CreatePostRequest, CreateStoryRequest, PostPage,
+                         CreateCommentRequest, CreatePostRequest, CreateStoryRequest,
+                         FollowListPage, FollowResponse, FollowUserView, PostPage,
                          PostReactionView, PostView, PostMediaView, ReactRequest, ReactResponse,
-                         ShareResponse, StoryGroupView, StoryView_, UserPublic)
+                         ShareResponse, StoryGroupView, StoryView_, UserPublic, UserProfileView)
 from app.push import push_to_users
 from app.services import are_friends
 from app.storage import storage
@@ -547,3 +548,122 @@ async def story_viewers(
         if u:
             viewers.append(UserPublic.model_validate(u))
     return viewers
+
+
+@feed.get("/users/{user_id}/posts", response_model=PostPage)
+async def user_posts(
+    user_id: str,
+    cursor: str | None = None,
+    limit: int = Query(20, ge=1, le=50),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    q = select(Post).where(Post.author_id == user_id, Post.deleted_at.is_(None)).order_by(Post.created_at.desc()).limit(limit + 1)
+    if cursor:
+        cur = await db.get(Post, cursor)
+        if cur:
+            q = q.where(Post.created_at < cur.created_at)
+    posts = (await db.scalars(q)).all()
+    has_next = len(posts) > limit
+    items = [await _post_view(db, p, user) for p in posts[:limit]]
+    return PostPage(items=items, next_cursor=posts[limit].id if has_next else None)
+
+
+# ── Follow / Profile ────────────────────────────────────────────
+
+
+@feed.post("/users/{user_id}/follow", response_model=FollowResponse)
+async def toggle_follow(
+    user_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user_id == user.id:
+        raise HTTPException(status_code=400, detail="Cannot follow yourself")
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    existing = await db.scalar(select(Follow).where(Follow.follower_id == user.id, Follow.following_id == user_id))
+    if existing:
+        await db.delete(existing)
+        await db.commit()
+    else:
+        follow = Follow(id=new_id(), follower_id=user.id, following_id=user_id)
+        db.add(follow)
+        await db.commit()
+    fc = int((await db.scalar(select(func.count(Follow.id)).where(Follow.following_id == user_id))) or 0)
+    fgc = int((await db.scalar(select(func.count(Follow.id)).where(Follow.follower_id == user_id))) or 0)
+    return FollowResponse(following=not bool(existing), follower_count=fc, following_count=fgc)
+
+
+@feed.get("/users/{user_id}/followers", response_model=FollowListPage)
+async def list_followers(
+    user_id: str,
+    cursor: str | None = Query(default=None),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(Follow).where(Follow.following_id == user_id).order_by(Follow.created_at.desc()).limit(30)
+    if cursor:
+        cur = await db.get(Follow, cursor)
+        if cur:
+            q = q.where(Follow.created_at < cur.created_at)
+    follows = (await db.scalars(q)).all()
+    items = []
+    for f in follows:
+        u = await db.get(User, f.follower_id)
+        if u:
+            items.append(FollowUserView(
+                id=u.id, username=u.username, display_name=u.display_name, bio=u.bio,
+                avatar_url=u.avatar_url, is_online=u.is_online, last_seen_at=u.last_seen_at,
+                followed_at=f.created_at,
+            ))
+    return FollowListPage(items=items, next_cursor=follows[-1].id if len(follows) == 30 else None)
+
+
+@feed.get("/users/{user_id}/following", response_model=FollowListPage)
+async def list_following(
+    user_id: str,
+    cursor: str | None = Query(default=None),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(Follow).where(Follow.follower_id == user_id).order_by(Follow.created_at.desc()).limit(30)
+    if cursor:
+        cur = await db.get(Follow, cursor)
+        if cur:
+            q = q.where(Follow.created_at < cur.created_at)
+    follows = (await db.scalars(q)).all()
+    items = []
+    for f in follows:
+        u = await db.get(User, f.following_id)
+        if u:
+            items.append(FollowUserView(
+                id=u.id, username=u.username, display_name=u.display_name, bio=u.bio,
+                avatar_url=u.avatar_url, is_online=u.is_online, last_seen_at=u.last_seen_at,
+                followed_at=f.created_at,
+            ))
+    return FollowListPage(items=items, next_cursor=follows[-1].id if len(follows) == 30 else None)
+
+
+@feed.get("/users/{user_id}/profile", response_model=UserProfileView)
+async def user_profile(
+    user_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    fc = int((await db.scalar(select(func.count(Follow.id)).where(Follow.following_id == user_id))) or 0)
+    fgc = int((await db.scalar(select(func.count(Follow.id)).where(Follow.follower_id == user_id))) or 0)
+    pc = int((await db.scalar(select(func.count(Post.id)).where(Post.author_id == user_id, Post.deleted_at.is_(None)))) or 0)
+    is_following = bool(await db.scalar(select(Follow).where(Follow.follower_id == user.id, Follow.following_id == user_id)))
+    return UserProfileView(
+        user=UserPublic.model_validate(target),
+        follower_count=fc, following_count=fgc, post_count=pc,
+        is_following=is_following, is_self=user.id == user_id,
+    )

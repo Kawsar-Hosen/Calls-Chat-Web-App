@@ -168,6 +168,7 @@ export type SocketEvent =
   | { type: 'reaction.updated'; postId: string; userId: string; emoji: string; likeCount: number }
   | { type: 'story.created'; story: StoryItem }
   | { type: 'story.deleted'; storyId: string }
+  | { type: 'follow.updated'; userId: string; followerCount: number; followingCount: number; isFollowing: boolean }
   | { type: 'connected' | 'disconnected' };
 
 
@@ -259,4 +260,32 @@ export interface StoryGroup {
   author: User;
   stories: StoryItem[];
   hasUnviewed: boolean;
+}
+
+
+// ── Follow ─────────────────────────────────────────────────────
+
+
+export interface FollowResponse {
+  following: boolean;
+  followerCount: number;
+  followingCount: number;
+}
+
+export interface FollowUser extends User {
+  followedAt: string;
+}
+
+export interface FollowListPage {
+  items: FollowUser[];
+  nextCursor: string | null;
+}
+
+export interface UserProfile {
+  user: User;
+  followerCount: number;
+  followingCount: number;
+  postCount: number;
+  isFollowing: boolean;
+  isSelf: boolean;
 }

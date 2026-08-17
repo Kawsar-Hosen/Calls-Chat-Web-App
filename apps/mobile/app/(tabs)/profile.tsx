@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
@@ -21,8 +21,11 @@ export default function SettingsScreen() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [pushState, setPushState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const [followStats, setFollowStats] = useState<{ followerCount: number; followingCount: number; postCount: number } | null>(null);
 
   useEffect(() => { if (user && pushState === 'idle' && (Platform.OS === 'ios' || Platform.OS === 'android')) void (async () => { const token = await registerForPushNotifications(); if (token) await api.registerDevice(token, Platform.OS); setPushState('ready'); })().catch(() => setPushState('unavailable')); }, [user, pushState]);
+
+  useEffect(() => { if (user) api.getUserProfile(user.id).then((p) => setFollowStats({ followerCount: p.followerCount, followingCount: p.followingCount, postCount: p.postCount })).catch(() => {}); }, [user]);
   if (!user) return null;
 
   const enablePush = async () => {
@@ -47,6 +50,25 @@ export default function SettingsScreen() {
           <Avatar name={user.displayName} uri={user.avatarUrl} size={88} online={connected} />
           <View style={{ flex: 1 }}><Text style={[styles.identityName, alignment, { color: colors.text }]}>{user.displayName}</Text><Text style={[styles.identityEmail, alignment, { color: colors.muted }]}>{user.email}</Text>{phoneLabel ? <Text style={[styles.identityPhone, alignment, { color: colors.muted }]}>{phoneLabel}</Text> : null}<Text style={[styles.editHint, alignment, { color: colors.accent }]}><MaterialCommunityIcons name="pencil" size={11} color={colors.accent} /> {t('editProfile')}</Text></View>
         </Pressable>
+
+        {followStats ? (
+          <View style={[styles.statsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Pressable style={styles.statItem} onPress={() => router.push({ pathname: '/feed/followers/[id]' as any, params: { id: user.id, tab: 'followers' } })}>
+              <Text style={[styles.statNum, { color: colors.text }]}>{followStats.followerCount}</Text>
+              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('followers')}</Text>
+            </Pressable>
+            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+            <Pressable style={styles.statItem} onPress={() => router.push({ pathname: '/feed/followers/[id]' as any, params: { id: user.id, tab: 'following' } })}>
+              <Text style={[styles.statNum, { color: colors.text }]}>{followStats.followingCount}</Text>
+              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('following')}</Text>
+            </Pressable>
+            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+            <View style={styles.statItem}>
+              <Text style={[styles.statNum, { color: colors.text }]}>{followStats.postCount}</Text>
+              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('posts')}</Text>
+            </View>
+          </View>
+        ) : null}
 
         <Text style={[styles.sectionLabel, alignment, { color: colors.muted }]}>{t('settings').toUpperCase()}</Text>
         <SettingRow icon="bell-outline" title={t('notification')} detail={pushState === 'ready' ? 'Enabled' : pushState === 'loading' ? 'Requesting permission...' : pushState === 'unavailable' ? 'Unavailable' : 'Push messages and alerts'} active={pushState === 'ready'} onPress={() => void enablePush()} rtl={isRTL} />
@@ -94,6 +116,11 @@ function SettingRow({ icon, title, detail, active, onPress, rtl }: { icon: React
 
 const styles = StyleSheet.create({
   safe: { flex: 1 }, content: { paddingHorizontal: 16, paddingBottom: 32 }, identity: { minHeight: 122, borderWidth: 1, borderRadius: 8, padding: 16, alignItems: 'center', gap: 15 }, identityName: { fontSize: 18, fontWeight: '800' }, identityEmail: { fontSize: 12, marginTop: 4 }, identityPhone: { fontSize: 12, marginTop: 2 }, editHint: { fontSize: 12, fontWeight: '800', marginTop: 8 },
+  statsCard: { flexDirection: 'row', borderWidth: 1, borderRadius: 12, padding: 16, marginTop: 12, alignItems: 'center' },
+  statItem: { flex: 1, alignItems: 'center' },
+  statNum: { fontSize: 18, fontWeight: '800' },
+  statLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  statDivider: { width: 1, height: 30 },
   sectionLabel: { fontSize: 10, fontWeight: '900', marginTop: 25, marginBottom: 9 }, settingRow: { minHeight: 70, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, marginBottom: 8, alignItems: 'center', gap: 11 }, settingIcon: { width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }, settingTitle: { fontSize: 14, fontWeight: '800' }, settingCopy: { fontSize: 11, marginTop: 3 },
   logout: { minHeight: 50, borderWidth: 1, borderRadius: 7, marginTop: 26, alignItems: 'center', justifyContent: 'center', gap: 8 }, backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,.45)', justifyContent: 'center', padding: 24 }, logoutModal: { borderWidth: 1, borderRadius: 16, padding: 20, alignItems: 'center', maxWidth: 420, width: '100%', alignSelf: 'center' }, logoutIcon: { width: 62, height: 62, borderRadius: 31, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }, logoutTitle: { fontSize: 18, fontWeight: '900' }, logoutCopy: { fontSize: 13, marginTop: 6, textAlign: 'center', lineHeight: 19 }, logoutActions: { flexDirection: 'row', gap: 10, marginTop: 20, width: '100%' }, cancelBtn: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, confirmBtn: { flex: 1, minHeight: 48, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 6, flexDirection: 'row' }, deleteAccount: { minHeight: 70, borderWidth: 1, borderRadius: 16, marginTop: 10, paddingHorizontal: 12, alignItems: 'center', gap: 11 }, deleteIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }, deleteTitle: { fontSize: 14, fontWeight: '800', marginTop: 3 }, deleteCopy: { fontSize: 11, marginTop: 2, lineHeight: 15 }, languageModal: { borderWidth: 1, borderRadius: 8, padding: 14, maxWidth: 480, width: '100%', alignSelf: 'center' }, modalHeader: { minHeight: 44, alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }, modalTitle: { fontSize: 17, fontWeight: '800', flex: 1 }, closeButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' }, languageRow: { minHeight: 60, borderTopWidth: StyleSheet.hairlineWidth, alignItems: 'center', gap: 11, paddingHorizontal: 6 }, flagIcon: { fontSize: 26 }, languageName: { fontSize: 14, fontWeight: '800' }, languageNative: { fontSize: 12, marginTop: 2 },
 });

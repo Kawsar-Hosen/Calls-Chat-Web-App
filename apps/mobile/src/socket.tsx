@@ -88,6 +88,8 @@ export function SocketProvider({ children }: PropsWithChildren) {
             emit({ type, story: { id: String(s.id), mediaUrl: String(s.media_url), mediaType: s.media_type === 'video' ? 'video' : 'image', content: s.content ?? null, createdAt: String(s.created_at), expiresAt: String(s.expires_at), viewCount: Number(s.view_count ?? 0), myViewed: false } });
           } else if (type === 'story.deleted') {
             emit({ type, storyId: String(raw.story_id ?? raw.id ?? '') });
+          } else if (type === 'follow.updated') {
+            emit({ type, userId: String(raw.user_id ?? ''), followerCount: Number(raw.follower_count ?? 0), followingCount: Number(raw.following_count ?? 0), isFollowing: raw.is_following === true });
           }
         } catch {
           // A malformed event should not interrupt the connection.

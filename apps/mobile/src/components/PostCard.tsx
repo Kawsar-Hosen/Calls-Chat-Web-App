@@ -15,7 +15,7 @@ import { FluentEmoji } from '@/emoji';
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
-function timeAgo(dateStr: string): string {
+function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'now';
@@ -66,6 +66,8 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
   const [floatingReactions, setFloatingReactions] = useState<{ id: number; emoji: string }[]>([]);
   const floatIdRef = useRef(0);
   const [localOverrides, setLocalOverrides] = useState<{ myLikeEmoji?: string | null; likeCount?: number; myBookmarked?: boolean; myShared?: boolean; shareCount?: number }>({});
+  const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
+  const [followLoading, setFollowLoading] = useState(false);
 
   const effectiveMyLike = localOverrides.myLikeEmoji !== undefined ? localOverrides.myLikeEmoji : post.myLikeEmoji;
   const effectiveLikeCount = localOverrides.likeCount !== undefined ? localOverrides.likeCount : post.likeCount;
@@ -100,6 +102,17 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
     setFloatingReactions((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
+  const toggleFollow = useCallback(async () => {
+    if (followLoading || post.author.id === user?.id) return;
+    const prev = isFollowing;
+    setIsFollowing(prev === null ? true : !prev);
+    setFollowLoading(true);
+    try {
+      const res = await api.toggleFollow(post.author.id);
+      setIsFollowing(res.following);
+    } catch { setIsFollowing(prev); } finally { setFollowLoading(false); }
+  }, [post.author.id, user?.id, isFollowing, followLoading]);
+
   const isLong = (post.content?.length ?? 0) > 200;
   const displayContent = isLong && !expanded ? post.content?.slice(0, 200) + '...' : post.content;
 
@@ -109,15 +122,26 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
     <>
     <Pressable onPress={() => router.push({ pathname: '/feed/[id]' as any, params: { id: post.id } })} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.header}>
-        <Avatar name={post.author.displayName} uri={post.author.avatarUrl} size={40} online={post.author.isOnline} />
+        <Pressable onPress={() => router.push({ pathname: '/feed/profile/[id]' as any, params: { id: post.author.id } })} style={styles.avatarPress}>
+          <Avatar name={post.author.displayName} uri={post.author.avatarUrl} size={40} online={post.author.isOnline} />
+        </Pressable>
         <View style={styles.headerInfo}>
-          <Text style={[styles.authorName, { color: colors.text }]}>{post.author.displayName}</Text>
+          <Pressable onPress={() => router.push({ pathname: '/feed/profile/[id]' as any, params: { id: post.author.id } })}>
+            <Text style={[styles.authorName, { color: colors.text }]}>{post.author.displayName}</Text>
+          </Pressable>
           <View style={styles.metaRow}>
             <Text style={[styles.time, { color: colors.faint }]}>{timeAgo(post.createdAt)}</Text>
             <Text style={[styles.dot, { color: colors.faint }]}>·</Text>
             <MaterialCommunityIcons name={post.visibility === 'friends' ? 'account-group' : 'earth'} size={12} color={colors.faint} />
           </View>
         </View>
+        {post.author.id !== user?.id ? (
+          <Pressable onPress={toggleFollow} disabled={followLoading} style={[styles.followBtnSmall, { backgroundColor: isFollowing ? colors.elevated : colors.accentSoft, borderColor: isFollowing ? colors.border : colors.accent }]}>
+            <Text style={[styles.followBtnSmallText, { color: isFollowing ? colors.muted : colors.accent }]}>
+              {isFollowing ? t('following') : t('follow')}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {displayContent ? (
@@ -209,11 +233,14 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
 const styles = StyleSheet.create({
   card: { marginHorizontal: 12, marginTop: 12, borderRadius: 16, borderWidth: 1, overflow: 'visible' },
   header: { flexDirection: 'row', alignItems: 'center', padding: 14, paddingBottom: 10, gap: 10 },
+  avatarPress: { marginRight: -4 },
   headerInfo: { flex: 1 },
   authorName: { fontSize: 14, fontWeight: '700' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   time: { fontSize: 12 },
   dot: { fontSize: 12 },
+  followBtnSmall: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
+  followBtnSmallText: { fontSize: 12, fontWeight: '700' },
   contentWrap: { paddingHorizontal: 14, paddingBottom: 10 },
   content: { fontSize: 14, lineHeight: 20 },
   seeMore: { fontSize: 13, fontWeight: '600', marginTop: 4 },

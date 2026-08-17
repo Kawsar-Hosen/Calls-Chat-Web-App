@@ -1,7 +1,7 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as SecureStore from 'expo-secure-store';
 import { Image } from 'react-native';
-import type { Attachment, AuthResult, BookmarkResponse, CommentPage, Conversation, FriendRequest, Group, GroupApplication, GroupCustomization, GroupMember, GroupRole, GroupSettings, GroupSummary, Message, Post, PostComment, PostPage, ReactResponse, ShareResponse, StoryGroup, Tokens, User, UserSearchResult } from './types';
+import type { Attachment, AuthResult, BookmarkResponse, CommentPage, Conversation, FollowListPage, FollowResponse, FriendRequest, Group, GroupApplication, GroupCustomization, GroupMember, GroupRole, GroupSettings, GroupSummary, Message, Post, PostComment, PostPage, ReactResponse, ShareResponse, StoryGroup, Tokens, User, UserProfile, UserSearchResult } from './types';
 
 const DEFAULT_CUSTOMIZATION: GroupCustomization = { theme: 'default', font: 'default', wallpaper: 'plain', bubble: 'rounded', density: 'comfortable', radius: 8 };
 
@@ -652,5 +652,47 @@ export const api = {
   async viewStory(storyId: string): Promise<{ viewCount: number }> {
     const raw = await request<Json>(`/stories/${storyId}/view`, { method: 'POST' });
     return { viewCount: Number(raw.view_count ?? 0) };
+  },
+
+  async toggleFollow(userId: string): Promise<FollowResponse> {
+    const raw = await request<Json>(`/users/${userId}/follow`, { method: 'POST' });
+    return { following: raw.following === true, followerCount: Number(raw.follower_count ?? 0), followingCount: Number(raw.following_count ?? 0) };
+  },
+
+  async getUserProfile(userId: string): Promise<UserProfile> {
+    const raw = await request<Json>(`/users/${userId}/profile`);
+    return {
+      user: mapUser((raw.user ?? {}) as Json),
+      followerCount: Number(raw.follower_count ?? 0),
+      followingCount: Number(raw.following_count ?? 0),
+      postCount: Number(raw.post_count ?? 0),
+      isFollowing: raw.is_following === true,
+      isSelf: raw.is_self === true,
+    };
+  },
+
+  async getPublicPosts(userId: string, cursor?: string, limit = 20): Promise<PostPage> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set('cursor', cursor);
+    const raw = await request<Json>(`/users/${userId}/posts?${params}`);
+    return { items: (extractItems(raw) as Json[]).map(mapPost), nextCursor: raw.next_cursor ? String(raw.next_cursor) : null };
+  },
+
+  async getFollowers(userId: string, cursor?: string): Promise<FollowListPage> {
+    const params = new URLSearchParams();
+    if (cursor) params.set('cursor', cursor);
+    const qs = params.toString() ? `?${params}` : '';
+    const raw = await request<Json>(`/users/${userId}/followers${qs}`);
+    const items = ((raw.items ?? []) as Json[]).map((r) => ({ ...mapUser(r), followedAt: String(r.followed_at ?? '') }));
+    return { items, nextCursor: raw.next_cursor ? String(raw.next_cursor) : null };
+  },
+
+  async getFollowing(userId: string, cursor?: string): Promise<FollowListPage> {
+    const params = new URLSearchParams();
+    if (cursor) params.set('cursor', cursor);
+    const qs = params.toString() ? `?${params}` : '';
+    const raw = await request<Json>(`/users/${userId}/following${qs}`);
+    const items = ((raw.items ?? []) as Json[]).map((r) => ({ ...mapUser(r), followedAt: String(r.followed_at ?? '') }));
+    return { items, nextCursor: raw.next_cursor ? String(raw.next_cursor) : null };
   },
 };

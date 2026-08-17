@@ -290,6 +290,15 @@ class PostBookmark(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class Follow(Base):
+    __tablename__ = "follows"
+    __table_args__ = (UniqueConstraint("follower_id", "following_id", name="uq_follow"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    follower_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    following_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Story(Base):
     __tablename__ = "stories"
     __table_args__ = (

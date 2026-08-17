@@ -48,6 +48,8 @@ function Navigator() {
         <Stack.Screen name="feed/story" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="feed/edit" options={{ presentation: 'modal' }} />
         <Stack.Screen name="feed/create-story" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="feed/profile/[id]" />
+        <Stack.Screen name="feed/followers/[id]" />
       </Stack>
       <CallListener />
       <PushListener />
