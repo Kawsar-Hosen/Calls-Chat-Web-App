@@ -20,7 +20,7 @@ export const StoryRing = memo(function StoryRing({ stories }: { stories: StoryGr
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
       {/* Your story */}
-      <Pressable style={styles.item} onPress={() => myStory?.stories[0] ? router.push({ pathname: '/story/[id]' as any, params: { id: myStory.stories[0].id } }) : router.push('/feed/create' as any)}>
+      <Pressable style={styles.item} onPress={() => myStory?.stories[0] ? router.push({ pathname: '/feed/story' as any, params: { authorId: myStory.author.id, storyIndex: '0' } }) : router.push('/feed/create-story' as any)}>
         <View style={[styles.ringBase, { borderColor: colors.border }]}>
           <Avatar name={user?.displayName || 'You'} uri={user?.avatarUrl ?? null} size={56} />
           {!myStory ? (
@@ -34,7 +34,7 @@ export const StoryRing = memo(function StoryRing({ stories }: { stories: StoryGr
 
       {/* Other stories */}
       {otherStories.map((group) => (
-        <Pressable key={group.author.id} style={styles.item} onPress={() => group.stories[0] && router.push({ pathname: '/story/[id]' as any, params: { id: group.stories[0].id } })}>
+        <Pressable key={group.author.id} style={styles.item} onPress={() => group.stories[0] && router.push({ pathname: '/feed/story' as any, params: { authorId: group.author.id, storyIndex: '0' } })}>
           <View style={[styles.ringBase, { borderColor: group.hasUnviewed ? colors.accent : colors.faint + '40' }]}>
             <Avatar name={group.author.displayName} uri={group.author.avatarUrl ?? null} size={56} />
           </View>
