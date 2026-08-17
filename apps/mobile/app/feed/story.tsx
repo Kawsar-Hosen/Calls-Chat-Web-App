@@ -12,6 +12,23 @@ import { Avatar } from '@/ui';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+function parseStoryContent(raw: string | null): { text: string; x: number; y: number; style: number } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.t === 'string') {
+      return { text: parsed.t, x: Number(parsed.x) || SCREEN_WIDTH / 2, y: Number(parsed.y) || SCREEN_HEIGHT / 2, style: Number(parsed.s) || 0 };
+    }
+  } catch {}
+  return { text: raw, x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT / 2, style: 0 };
+}
+
+const TEXT_STYLES = [
+  { bg: '#00000088', color: '#FFFFFF', fontWeight: '700' as const },
+  { bg: '#FFFFFFCC', color: '#000000', fontWeight: '700' as const },
+  { bg: 'transparent', color: '#FFFFFF', fontWeight: '900' as const },
+];
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -179,11 +196,23 @@ export default function StoryViewerScreen() {
 
       <Pressable onPress={(e) => handleTap(e.nativeEvent.locationX)} style={styles.storyArea}>
         <Image source={{ uri: currentStory.mediaUrl }} style={styles.storyImage} resizeMode="cover" />
-        {currentStory.content ? (
-          <View style={styles.contentOverlay}>
-            <Text style={styles.storyContent}>{currentStory.content}</Text>
-          </View>
-        ) : null}
+        {(() => {
+          const parsed = parseStoryContent(currentStory.content);
+          if (!parsed) return null;
+          const ts = TEXT_STYLES[parsed.style % TEXT_STYLES.length]!;
+          return (
+            <View style={[styles.draggableTextOverlay, {
+              left: parsed.x - 80,
+              top: parsed.y - 18,
+              backgroundColor: ts.bg,
+              borderRadius: ts.bg === 'transparent' ? 0 : 8,
+              paddingHorizontal: ts.bg === 'transparent' ? 0 : 14,
+              paddingVertical: ts.bg === 'transparent' ? 0 : 10,
+            }]}>
+              <Text style={[styles.storyContentParsed, { color: ts.color, fontWeight: ts.fontWeight }]}>{parsed.text}</Text>
+            </View>
+          );
+        })()}
       </Pressable>
 
       <View style={styles.bottomBar}>
@@ -216,6 +245,8 @@ const styles = StyleSheet.create({
   storyImage: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT },
   contentOverlay: { position: 'absolute', bottom: 80, left: 16, right: 16, backgroundColor: '#00000066', borderRadius: 12, padding: 14 },
   storyContent: { color: '#FFFFFF', fontSize: 15, lineHeight: 22 },
+  draggableTextOverlay: { position: 'absolute', zIndex: 20, maxWidth: SCREEN_WIDTH * 0.7 },
+  storyContentParsed: { fontSize: 20, textAlign: 'center' },
   bottomBar: { position: 'absolute', bottom: 30, left: 0, right: 0, alignItems: 'center', zIndex: 10 },
   viewRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   viewCount: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },

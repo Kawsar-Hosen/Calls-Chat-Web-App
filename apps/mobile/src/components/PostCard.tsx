@@ -11,6 +11,7 @@ import { Avatar } from '@/ui';
 import { CommentSheet } from '@/components/CommentSheet';
 import { ShareSheet } from '@/components/ShareSheet';
 import { playSound } from '@/sounds';
+import { FluentEmoji } from '@/emoji';
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
@@ -48,7 +49,7 @@ function AnimatedReaction({ emoji, onDone }: { emoji: string; onDone: () => void
 
   return (
     <Animated.View style={[styles.floatingEmoji, { transform: [{ scale }, { translateY }], opacity }]}>
-      <Text style={styles.floatingEmojiText}>{emoji}</Text>
+      <FluentEmoji char={emoji} size={40} />
     </Animated.View>
   );
 }
@@ -150,7 +151,7 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
           <View style={styles.statsLeft}>
             {effectiveLikeCount > 0 ? (
               <View style={styles.reactionBadge}>
-                <Text style={{ fontSize: 14 }}>{effectiveMyLike || '👍'}</Text>
+                <FluentEmoji char={effectiveMyLike || '👍'} size={16} />
                 <Text style={[styles.statNum, { color: colors.muted }]}>{effectiveLikeCount}</Text>
               </View>
             ) : null}
@@ -183,9 +184,9 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
 
       {showReactions ? (
         <View style={[styles.reactionPicker, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {REACTIONS.map((emoji, i) => (
+          {REACTIONS.map((emoji) => (
             <Pressable key={emoji} onPress={() => { toggleReaction(emoji); setShowReactions(false); }} style={styles.reactionBtn}>
-              <Text style={styles.reactionEmoji}>{emoji}</Text>
+              <FluentEmoji char={emoji} size={32} />
             </Pressable>
           ))}
         </View>
@@ -236,8 +237,6 @@ const styles = StyleSheet.create({
   actionLabel: { fontSize: 12, fontWeight: '600' },
   reactionPicker: { flexDirection: 'row', justifyContent: 'center', gap: 8, padding: 10, borderTopWidth: StyleSheet.hairlineWidth },
   reactionBtn: { padding: 6, borderRadius: 20 },
-  reactionEmoji: { fontSize: 30 },
   floatingContainer: { position: 'absolute', bottom: 60, right: 20, width: 50, height: 50, alignItems: 'center', justifyContent: 'center' },
   floatingEmoji: { position: 'absolute' },
-  floatingEmojiText: { fontSize: 36 },
 });

@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
@@ -9,6 +9,7 @@ import { useAuth } from '@/auth';
 import { useI18n } from '@/i18n';
 import { useTheme } from '@/theme';
 import { Avatar } from '@/ui';
+import { giphyItems, type GiphyItem } from '@/giphy';
 
 interface MediaPreview {
   uri: string;
@@ -48,15 +49,6 @@ const FEELINGS = [
   { emoji: '🫠', label: 'melting' },
 ];
 
-const STICKERS = [
-  ['🐱','🐶','🦊','🐻','🐼','🐨'],
-  ['🌸','🌺','🌻','🌹','🌷','🍄'],
-  ['🍕','🍔','🍟','🌮','🍩','🎂'],
-  ['⚽','🏀','🎮','🎵','🎸','🏆'],
-  ['🚗','✈️','🚀','🏠','🌍','💎'],
-  ['❤️','🧡','💛','💚','💙','💜'],
-];
-
 type PickerType = null | 'emoji' | 'feeling' | 'sticker';
 
 export default function CreatePostScreen() {
@@ -70,6 +62,10 @@ export default function CreatePostScreen() {
   const [posting, setPosting] = useState(false);
   const [activePicker, setActivePicker] = useState<PickerType>(null);
   const [activeFeeling, setActiveFeeling] = useState<{ emoji: string; label: string } | null>(null);
+  const [stickers, setStickers] = useState<GiphyItem[]>([]);
+  const [stickersLoading, setStickersLoading] = useState(false);
+  const [stickersError, setStickersError] = useState('');
+  const [stickerQuery, setStickerQuery] = useState('');
 
   const pickImages = async () => {
     const remaining = 4 - media.length;
@@ -103,11 +99,38 @@ export default function CreatePostScreen() {
     switch (key) {
       case 'photo': pickImages(); break;
       case 'video': pickVideo(); break;
-      case 'sticker': setActivePicker(activePicker === 'sticker' ? null : 'sticker'); break;
+      case 'sticker': {
+        const next = activePicker === 'sticker' ? null : 'sticker';
+        setActivePicker(next);
+        if (next === 'sticker' && stickers.length === 0) loadStickers('');
+        break;
+      }
       case 'feeling': setActivePicker(activePicker === 'feeling' ? null : 'feeling'); break;
       case 'emoji': setActivePicker(activePicker === 'emoji' ? null : 'emoji'); break;
     }
   };
+
+  const loadStickers = useCallback(async (q: string) => {
+    setStickersLoading(true);
+    setStickersError('');
+    try {
+      const items = await giphyItems('sticker', q);
+      setStickers(items);
+    } catch (e: any) {
+      setStickersError(e?.message || 'Failed to load stickers');
+    } finally {
+      setStickersLoading(false);
+    }
+  }, []);
+
+  const selectSticker = useCallback(async (item: GiphyItem) => {
+    setPosting(true);
+    try {
+      const saved = await api.saveGiphy({ id: item.id, kind: 'sticker', title: item.title, url: item.url });
+      setMedia((prev) => [...prev, { uri: saved.url, id: saved.id, type: 'image' }]);
+      setActivePicker(null);
+    } catch {} finally { setPosting(false); }
+  }, []);
 
   const insertEmoji = (emoji: string) => {
     setContent((prev) => prev + emoji);
@@ -128,6 +151,7 @@ export default function CreatePostScreen() {
     try {
       const mediaIds: string[] = [];
       for (const m of media) {
+        if (m.id) { mediaIds.push(m.id); continue; }
         const ext = m.type === 'video' ? 'mp4' : 'jpg';
         const mime = m.type === 'video' ? 'video/mp4' : 'image/jpeg';
         const uploaded = await api.uploadMedia(m.uri, `media_${Date.now()}.${ext}`, mime);
@@ -312,15 +336,29 @@ export default function CreatePostScreen() {
                 <MaterialCommunityIcons name="close" size={20} color={colors.muted} />
               </Pressable>
             </View>
-            {STICKERS.map((row, ri) => (
-              <View key={ri} style={styles.stickerRow}>
-                {row.map((s) => (
-                  <Pressable key={s} onPress={() => insertEmoji(s)} style={styles.stickerCell}>
-                    <Text style={styles.stickerText}>{s}</Text>
+            <View style={[styles.pickerSearch, { borderColor: colors.border, backgroundColor: colors.background }]}>
+              <MaterialCommunityIcons name="magnify" size={18} color={colors.faint} />
+              <TextInput
+                value={stickerQuery}
+                onChangeText={(q) => { setStickerQuery(q); loadStickers(q); }}
+                placeholder="Search stickers..."
+                placeholderTextColor={colors.faint}
+                style={{ flex: 1, color: colors.text, fontSize: 14 }}
+              />
+            </View>
+            {stickersLoading ? (
+              <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: 20 }} />
+            ) : stickersError ? (
+              <Text style={{ color: colors.faint, textAlign: 'center', marginTop: 20, fontSize: 13 }}>{stickersError}</Text>
+            ) : (
+              <View style={styles.stickerGrid}>
+                {stickers.map((item) => (
+                  <Pressable key={item.id} onPress={() => selectSticker(item)} style={styles.stickerGridCell}>
+                    <Image source={{ uri: item.previewUrl }} resizeMode="cover" style={styles.stickerGridImage} />
                   </Pressable>
                 ))}
               </View>
-            ))}
+            )}
           </View>
         ) : null}
 
@@ -374,7 +412,8 @@ const styles = StyleSheet.create({
   feelingItem: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'transparent' },
   feelingEmoji: { fontSize: 18 },
   feelingItemLabel: { fontSize: 13, fontWeight: '600', textTransform: 'capitalize' },
-  stickerRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 8 },
-  stickerCell: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-  stickerText: { fontSize: 32 },
+  stickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  stickerGridCell: { width: '30%', aspectRatio: 1, borderRadius: 10, overflow: 'hidden', backgroundColor: 'rgba(127,127,127,.1)' },
+  stickerGridImage: { width: '100%', height: '100%' },
+  pickerSearch: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, marginBottom: 10 },
 });

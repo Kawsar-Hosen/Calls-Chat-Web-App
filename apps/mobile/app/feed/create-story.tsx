@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, GestureResponderEvent, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, GestureResponderEvent, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import { useAuth } from '@/auth';
@@ -66,11 +66,11 @@ export default function CreateStoryScreen() {
       const mime = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
       const uploaded = await api.uploadMedia(mediaUri, `story_${Date.now()}.${ext}`, mime);
       const textContent = storyText.trim()
-        ? `${storyText.trim()}|${Math.round(textPos.x)}|${Math.round(textPos.y)}|${textStyle}`
+        ? JSON.stringify({ t: storyText.trim(), x: Math.round(textPos.x), y: Math.round(textPos.y), s: textStyle })
         : undefined;
       await api.createStory(uploaded.id, textContent);
       router.back();
-    } catch {} finally { setPosting(false); }
+    } catch (e: any) { Alert.alert('Upload failed', String(e?.message || e || 'Unknown error')); } finally { setPosting(false); }
   };
 
   const onDragStart = (e: GestureResponderEvent) => {
