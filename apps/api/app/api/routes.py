@@ -20,8 +20,8 @@ from app.dependencies import get_current_session, get_current_user, websocket_us
 from app.email import generate_deletion_code, mask_email, render_deletion_email, render_password_reset_email, send_email
 from app.models import (AccountDeletion, AuthSession, Block, CallOffer, Conversation, ConversationMember, Device,
                         FriendRequest, Friendship, Group, GroupApplication, GroupMember, MediaAttachment,
-                        Message, MessageRead, PasswordReset, Post, PostBookmark, PostComment, PostLike,
-                        PostMedia, PostShare, Reaction, Story, StoryView, User, CommentLike, new_id, utcnow)
+                        Message, MessageRead, NotificationPreference, PasswordReset, Post, PostBookmark, PostComment, PostLike,
+                        PostMedia, PostShare, Reaction, Report, SocialLink, Story, StoryView, User, CommentLike, new_id, utcnow)
 from app.push import push_to_users
 from app.rate_limit import auth_rate_limit
 from app.schemas import *
@@ -361,6 +361,88 @@ async def avatar(file: UploadFile = File(...), user: User = Depends(get_current_
     user.avatar_url = await storage.save(file, avatar=True)
     await db.commit()
     return UploadResponse(url=user.avatar_url)
+
+
+@router.post("/profile/cover", response_model=UploadResponse)
+async def cover_photo(file: UploadFile = File(...), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not (file.content_type or "").startswith("image/"): raise HTTPException(415, "Cover must be an image")
+    old = user.cover_url
+    user.cover_url = await storage.save(file)
+    await db.commit()
+    if old: await storage.delete(old)
+    return UploadResponse(url=user.cover_url)
+
+
+@router.delete("/profile/avatar")
+async def delete_avatar(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    old = user.avatar_url
+    user.avatar_url = None
+    await db.commit()
+    if old: await storage.delete(old)
+    return {"ok": True}
+
+
+@router.delete("/profile/cover")
+async def delete_cover(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    old = user.cover_url
+    user.cover_url = None
+    await db.commit()
+    if old: await storage.delete(old)
+    return {"ok": True}
+
+
+# ── Social Links ───────────────────────────────────────────────
+
+from app.models import SocialLink as SocialLinkModel
+
+
+@router.get("/profile/social-links", response_model=SocialLinkListPage)
+async def list_social_links(user: User = Depends(get_current_user)):
+    return SocialLinkListPage(items=[], next_cursor=None)
+
+
+@router.get("/users/{user_id}/social-links", response_model=SocialLinkListPage)
+async def get_user_social_links(user_id: str, db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(select(SocialLinkModel).where(SocialLinkModel.user_id == user_id).order_by(SocialLinkModel.sort_order))).scalars().all()
+    return SocialLinkListPage(items=[SocialLinkView(id=r.id, platform=r.platform, username=r.username, url=r.url, sort_order=r.sort_order) for r in rows])
+
+
+@router.post("/profile/social-links", response_model=SocialLinkView, status_code=201)
+async def create_social_link(data: SocialLinkCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    existing = await db.scalar(select(SocialLinkModel).where(SocialLinkModel.user_id == user.id, SocialLinkModel.platform == data.platform))
+    if existing:
+        existing.username = data.username
+        existing.url = data.url
+        existing.sort_order = data.sort_order
+        await db.commit(); await db.refresh(existing)
+        return SocialLinkView(id=existing.id, platform=existing.platform, username=existing.username, url=existing.url, sort_order=existing.sort_order)
+    link = SocialLinkModel(id=new_id(), user_id=user.id, platform=data.platform, username=data.username, url=data.url, sort_order=data.sort_order)
+    db.add(link); await db.commit(); await db.refresh(link)
+    return SocialLinkView(id=link.id, platform=link.platform, username=link.username, url=link.url, sort_order=link.sort_order)
+
+
+@router.delete("/profile/social-links/{link_id}")
+async def delete_social_link(link_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    link = await db.get(SocialLinkModel, link_id)
+    if not link or link.user_id != user.id: raise HTTPException(404, "Not found")
+    await db.delete(link); await db.commit()
+    return {"ok": True}
+
+
+# ── Location Search ────────────────────────────────────────────
+
+@router.get("/locations/search")
+async def search_locations(q: str = Query(..., min_length=2, max_length=100)):
+    from urllib.request import urlopen, Request
+    from urllib.parse import quote, urlencode
+    try:
+        params = urlencode({"q": q, "format": "json", "limit": 8, "addressdetails": 1})
+        req = Request(f"https://nominatim.openstreetmap.org/search?{params}", headers={"User-Agent": "XYTEEE/1.0"})
+        with urlopen(req, timeout=6) as resp:
+            data = json.loads(resp.read())
+        return [LocationResult(display_name=item.get("display_name", ""), lat=float(item.get("lat", 0)), lon=float(item.get("lon", 0))) for item in data[:8]]
+    except Exception:
+        return []
 
 
 @router.post("/media/upload", response_model=MediaUploadResponse, status_code=201)
@@ -926,6 +1008,69 @@ async def group_application_action(group_id: str, application_id: str, action: s
     if action == "accept":
         await manager.send_user(item.applicant_id, {"type": "group.member.added", "group_id": group.id, "conversation_id": group.conversation_id, "user_id": item.applicant_id})
     return view
+
+
+# ── Notification Preferences ──────────────────────────────────────
+
+
+@router.get("/settings/notifications", response_model=NotificationPreferenceView)
+async def get_notification_prefs(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    prefs = await db.get(NotificationPreference, user.id)
+    if not prefs:
+        prefs = NotificationPreference(user_id=user.id)
+        db.add(prefs)
+        await db.commit()
+        await db.refresh(prefs)
+    return prefs
+
+
+@router.patch("/settings/notifications", response_model=NotificationPreferenceView)
+async def update_notification_prefs(data: NotificationPreferenceUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    prefs = await db.get(NotificationPreference, user.id)
+    if not prefs:
+        prefs = NotificationPreference(user_id=user.id)
+        db.add(prefs)
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(prefs, key, value)
+    await db.commit()
+    await db.refresh(prefs)
+    return prefs
+
+
+# ── Change Password ──────────────────────────────────────────────
+
+
+@router.post("/auth/change-password", status_code=204)
+async def change_password(data: ChangePasswordRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not verify_password(data.current_password, user.password_hash):
+        raise HTTPException(400, "Incorrect password")
+    user.password_hash = hash_password(data.new_password)
+    await db.commit()
+
+
+# ── Change Email ─────────────────────────────────────────────────
+
+
+@router.post("/auth/change-email", status_code=204)
+async def change_email(data: ChangeEmailRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not verify_password(data.password, user.password_hash):
+        raise HTTPException(400, "Incorrect password")
+    new = data.new_email.lower().strip()
+    if new == user.email:
+        raise HTTPException(400, "New email is the same as current")
+    if await db.scalar(select(User.id).where(User.email == new)):
+        raise HTTPException(409, "Email already in use")
+    user.email = new
+    await db.commit()
+
+
+# ── Report ───────────────────────────────────────────────────────
+
+
+@router.post("/reports", status_code=201)
+async def create_report(data: ReportRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    db.add(Report(reporter_id=user.id, type=data.type, target_id=data.target_id, reason=data.reason, details=data.details))
+    await db.commit()
 
 
 @router.websocket("/ws")

@@ -19,24 +19,26 @@ export const StoryRing = memo(function StoryRing({ stories }: { stories: StoryGr
 
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-      {/* Your story */}
       <Pressable style={styles.item} onPress={() => myStory?.stories[0] ? router.push({ pathname: '/feed/story' as any, params: { authorId: myStory.author.id, storyIndex: '0' } }) : router.push('/feed/create-story' as any)}>
-        <View style={[styles.ringBase, { borderColor: colors.border }]}>
-          <Avatar name={user?.displayName || 'You'} uri={user?.avatarUrl ?? null} size={56} />
-          {!myStory ? (
+        <View style={styles.myRingWrap}>
+          <View style={[styles.ringBase, { borderColor: myStory ? colors.accent : colors.border }]}>
+            <Avatar name={user?.displayName || 'You'} uri={user?.avatarUrl ?? null} size={52} />
+          </View>
+          {!myStory && (
             <View style={[styles.addBadge, { backgroundColor: colors.accent, borderColor: colors.surface }]}>
               <MaterialCommunityIcons name="plus" size={14} color={colors.accentText} />
             </View>
-          ) : null}
+          )}
         </View>
         <Text style={[styles.label, { color: colors.muted }]} numberOfLines={1}>{t('yourStory')}</Text>
       </Pressable>
 
-      {/* Other stories */}
       {otherStories.map((group) => (
         <Pressable key={group.author.id} style={styles.item} onPress={() => group.stories[0] && router.push({ pathname: '/feed/story' as any, params: { authorId: group.author.id, storyIndex: '0' } })}>
-          <View style={[styles.ringBase, { borderColor: group.hasUnviewed ? colors.accent : colors.faint + '40' }]}>
-            <Avatar name={group.author.displayName} uri={group.author.avatarUrl ?? null} size={56} />
+          <View style={styles.myRingWrap}>
+            <View style={[styles.ringBase, { borderColor: group.hasUnviewed ? colors.accent : colors.faint + '60' }]}>
+              <Avatar name={group.author.displayName} uri={group.author.avatarUrl ?? null} size={52} />
+            </View>
           </View>
           <Text style={[styles.label, { color: colors.muted }]} numberOfLines={1}>{group.author.displayName.split(' ')[0]}</Text>
         </Pressable>
@@ -47,7 +49,8 @@ export const StoryRing = memo(function StoryRing({ stories }: { stories: StoryGr
 
 const styles = StyleSheet.create({
   row: { paddingHorizontal: 12, paddingVertical: 14, gap: 14 },
-  item: { alignItems: 'center', width: 72, gap: 6 },
+  item: { alignItems: 'center', width: 76, gap: 6 },
+  myRingWrap: { position: 'relative' },
   ringBase: { width: 64, height: 64, borderRadius: 32, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
   addBadge: { position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   label: { fontSize: 11, fontWeight: '500', textAlign: 'center' },

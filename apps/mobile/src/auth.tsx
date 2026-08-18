@@ -10,8 +10,11 @@ interface AuthContextValue {
   register: (data: { displayName: string; username: string; email: string; password: string }) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (data: { displayName?: string; username?: string; bio?: string; avatarUrl?: string | null; email?: string; phoneCode?: string | null; phone?: string | null }) => Promise<void>;
+  updateProfile: (data: { displayName?: string; username?: string; bio?: string; avatarUrl?: string | null; coverUrl?: string | null; customStatus?: string | null; accentColor?: string | null; location?: string | null; website?: string | null; email?: string; phoneCode?: string | null; phone?: string | null; lastSeenVisible?: boolean; onlineVisible?: boolean; whoCanMessage?: string; whoCanSeePosts?: string; readReceipts?: boolean; typingIndicator?: boolean; fontSize?: string; chatWallpaper?: string | null }) => Promise<void>;
   uploadAvatar: (uri: string, onProgress?: (pct: number) => void) => Promise<void>;
+  uploadCover: (uri: string, onProgress?: (pct: number) => void) => Promise<void>;
+  deleteAvatar: () => Promise<void>;
+  deleteCover: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -60,6 +63,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
       },
       updateProfile: async (data) => setUser(await api.updateProfile(data)),
       uploadAvatar: async (uri, onProgress) => setUser(await api.uploadAvatar(uri, onProgress)),
+      uploadCover: async (uri, onProgress) => setUser(await api.uploadCover(uri, onProgress)),
+      deleteAvatar: async () => setUser(await api.deleteAvatar()),
+      deleteCover: async () => setUser(await api.deleteCover()),
     }}>
       {children}
     </AuthContext.Provider>

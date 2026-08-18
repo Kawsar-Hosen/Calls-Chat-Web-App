@@ -5,11 +5,26 @@ export interface User {
   email?: string;
   bio: string | null;
   avatarUrl: string | null;
+  coverUrl?: string | null;
+  customStatus?: string | null;
+  accentColor?: string | null;
+  location?: string | null;
+  website?: string | null;
+  dateOfBirth?: string | null;
   isOnline: boolean;
   lastSeenAt: string | null;
+  lastSeenVisible?: boolean;
+  onlineVisible?: boolean;
+  whoCanMessage?: string;
+  whoCanSeePosts?: string;
+  readReceipts?: boolean;
+  typingIndicator?: boolean;
+  fontSize?: string;
+  chatWallpaper?: string | null;
   phoneCode?: string | null;
   phone?: string | null;
   remark?: string | null;
+  createdAt?: string;
 }
 
 export interface Conversation {
@@ -168,6 +183,9 @@ export type SocketEvent =
   | { type: 'reaction.updated'; postId: string; userId: string; emoji: string; likeCount: number }
   | { type: 'story.created'; story: StoryItem }
   | { type: 'story.deleted'; storyId: string }
+  | { type: 'story.reacted'; storyId: string; userId: string; displayName: string; avatarUrl: string | null; emoji: string; reactionCount: number }
+  | { type: 'story.replied'; storyId: string; replyId: string; senderId: string; senderName: string; senderAvatar: string | null; content: string | null; createdAt: string }
+  | { type: 'story.viewed'; storyId: string; userId: string; displayName: string }
   | { type: 'follow.updated'; userId: string; followerCount: number; followingCount: number; isFollowing: boolean }
   | { type: 'connected' | 'disconnected' };
 
@@ -185,6 +203,8 @@ export interface PostMedia {
 export interface PostReaction {
   emoji: string;
   userId: string;
+  displayName: string;
+  avatarUrl: string | null;
 }
 
 export interface Post {
@@ -263,6 +283,35 @@ export interface StoryGroup {
 }
 
 
+export interface StoryReactionUser {
+  emoji: string;
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface StoryReactionResponse {
+  emoji: string;
+  reactionCount: number;
+  myReaction: string | null;
+  reactions: StoryReactionUser[];
+}
+
+export interface StoryReplyItem {
+  id: string;
+  sender: User;
+  content: string | null;
+  createdAt: string;
+}
+
+export interface StoryViewerUser {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  viewedAt: string;
+}
+
+
 // ── Follow ─────────────────────────────────────────────────────
 
 
@@ -288,4 +337,63 @@ export interface UserProfile {
   postCount: number;
   isFollowing: boolean;
   isSelf: boolean;
+  mutualFriendCount?: number;
+  profileViewCount?: number;
+}
+
+export interface StoryHighlight {
+  id: string;
+  title: string;
+  coverUrl: string | null;
+  sortOrder: number;
+  storyCount: number;
+  createdAt: string;
+}
+
+export interface StoryHighlightPage {
+  items: StoryHighlight[];
+  nextCursor: string | null;
+}
+
+export interface ProfileMediaItem {
+  id: string;
+  url: string;
+  mimeType: string | null;
+  postId: string;
+  createdAt: string;
+}
+
+export interface ProfileMediaPage {
+  items: ProfileMediaItem[];
+  nextCursor: string | null;
+}
+
+export interface SocialLink {
+  id: string;
+  platform: string;
+  username: string;
+  url: string;
+  sortOrder: number;
+}
+
+export interface SocialLinkListPage {
+  items: SocialLink[];
+  nextCursor: string | null;
+}
+
+export interface LocationResult {
+  display_name: string;
+  lat: number;
+  lon: number;
+}
+
+export interface NotificationPrefs {
+  messages: boolean;
+  calls: boolean;
+  posts: boolean;
+  comments: boolean;
+  reactions: boolean;
+  follows: boolean;
+  mentions: boolean;
+  groupActivity: boolean;
 }

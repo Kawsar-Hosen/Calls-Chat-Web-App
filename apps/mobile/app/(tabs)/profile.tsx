@@ -1,126 +1,410 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, FlatList, Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import { useAuth } from '@/auth';
-import { formatPhone } from '@/countries';
-import { languages, useI18n, type LanguageCode } from '@/i18n';
-import { registerForPushNotifications } from '@/notifications';
 import { useSocket } from '@/socket';
 import { useTheme } from '@/theme';
-import { Avatar, ScreenHeader } from '@/ui';
+import { useI18n } from '@/i18n';
+import { Avatar, Skeleton } from '@/ui';
+import { PostCard } from '@/components/PostCard';
+import type { Post, ProfileMediaItem, SocialLink, StoryHighlight, UserProfile } from '@/types';
 
-export default function SettingsScreen() {
-  const { user, logout } = useAuth();
-  const { colors, dark, setMode } = useTheme();
+type Tab = 'posts' | 'media' | 'likes' | 'about';
+
+const SOCIAL_PLATFORMS = [
+  { id: 'instagram', label: 'Instagram', icon: 'instagram' as const, color: '#E1306C' },
+  { id: 'twitter', label: 'X / Twitter', icon: 'twitter' as const, color: '#1DA1F2' },
+  { id: 'facebook', label: 'Facebook', icon: 'facebook' as const, color: '#1877F2' },
+  { id: 'youtube', label: 'YouTube', icon: 'youtube' as const, color: '#FF0000' },
+  { id: 'tiktok', label: 'TikTok', icon: 'music-note' as const, color: '#000000' },
+  { id: 'snapchat', label: 'Snapchat', icon: 'ghost' as const, color: '#FFFC00' },
+  { id: 'linkedin', label: 'LinkedIn', icon: 'linkedin' as const, color: '#0A66C2' },
+  { id: 'github', label: 'GitHub', icon: 'github' as const, color: '#333333' },
+  { id: 'discord', label: 'Discord', icon: 'chat' as const, color: '#5865F2' },
+  { id: 'telegram', label: 'Telegram', icon: 'send' as const, color: '#26A5E4' },
+  { id: 'twitch', label: 'Twitch', icon: 'twitch' as const, color: '#9146FF' },
+  { id: 'pinterest', label: 'Pinterest', icon: 'pinterest' as const, color: '#BD081C' },
+  { id: 'spotify', label: 'Spotify', icon: 'spotify' as const, color: '#1DB954' },
+];
+
+export default function ProfileScreen() {
+  const params = useLocalSearchParams<{ id?: string }>();
+  const { user: me } = useAuth();
+  const { colors } = useTheme();
   const { connected } = useSocket();
-  const { language, setLanguage, isRTL, t } = useI18n();
+  const { t } = useI18n();
   const router = useRouter();
-  const [languageOpen, setLanguageOpen] = useState(false);
-  const [logoutOpen, setLogoutOpen] = useState(false);
-  const [pushState, setPushState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
-  const [followStats, setFollowStats] = useState<{ followerCount: number; followingCount: number; postCount: number } | null>(null);
 
-  useEffect(() => { if (user && pushState === 'idle' && (Platform.OS === 'ios' || Platform.OS === 'android')) void (async () => { const token = await registerForPushNotifications(); if (token) await api.registerDevice(token, Platform.OS); setPushState('ready'); })().catch(() => setPushState('unavailable')); }, [user, pushState]);
+  const userId = params.id || me?.id || '';
+  const isSelf = !params.id || params.id === me?.id;
 
-  useEffect(() => { if (user) api.getUserProfile(user.id).then((p) => setFollowStats({ followerCount: p.followerCount, followingCount: p.followingCount, postCount: p.postCount })).catch(() => {}); }, [user]);
-  if (!user) return null;
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [tab, setTab] = useState<Tab>('posts');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [media, setMedia] = useState<ProfileMediaItem[]>([]);
+  const [likes, setLikes] = useState<Post[]>([]);
+  const [highlights, setHighlights] = useState<StoryHighlight[]>([]);
+  const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
 
-  const enablePush = async () => {
-    setPushState('loading');
-    const token = await registerForPushNotifications();
-    if (token && (Platform.OS === 'ios' || Platform.OS === 'android')) await api.registerDevice(token, Platform.OS);
-    setPushState(token ? 'ready' : 'unavailable');
-  };
+  const scrollY = useRef(new Animated.Value(0)).current;
 
-  const currentLanguage = languages.find((item) => item.code === language)!;
-  const phoneLabel = formatPhone(user.phoneCode, user.phone);
-  const direction = { flexDirection: isRTL ? 'row-reverse' as const : 'row' as const };
-  const alignment = { textAlign: isRTL ? 'right' as const : 'left' as const };
+  const loadProfile = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const [p, h, sl] = await Promise.all([
+        api.getUserProfile(userId),
+        api.getUserHighlights(userId).catch(() => ({ items: [], nextCursor: null })),
+        api.getSocialLinks(userId).catch(() => []),
+      ]);
+      setProfile(p);
+      setHighlights(h.items);
+      setSocialLinks(sl);
+    } catch {}
+  }, [userId]);
 
-  const openEditProfile = () => router.push('/settings/edit-profile');
+  const loadTab = useCallback(async (tabName: Tab) => {
+    if (!userId) return;
+    try {
+      if (tabName === 'posts') {
+        const r = await api.getPublicPosts(userId);
+        setPosts(r.items);
+      } else if (tabName === 'media') {
+        const r = await api.getUserMedia(userId);
+        setMedia(r.items);
+      } else if (tabName === 'likes') {
+        const r = await api.getUserLikes(userId);
+        setLikes(r.items);
+      }
+    } catch {}
+  }, [userId]);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([loadProfile(), loadTab('posts')]).finally(() => setLoading(false));
+  }, [loadProfile, loadTab]);
+
+  useEffect(() => { loadTab(tab); }, [tab, loadTab]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([loadProfile(), loadTab(tab)]);
+    setRefreshing(false);
+  }, [loadProfile, loadTab, tab]);
+
+  const coverHeight = scrollY.interpolate({ inputRange: [-100, 0], outputRange: [240, 160], extrapolate: 'clamp' });
+
+  if (loading) return <ProfileSkeleton colors={colors} />;
+  if (!profile) return null;
+  const { user, followerCount, followingCount, postCount, isFollowing, mutualFriendCount, profileViewCount } = profile;
+  const accent = user.accentColor || colors.accent;
 
   return (
-    <SafeAreaView edges={['top']} style={[styles.safe, { backgroundColor: colors.background }]}>
-      <ScreenHeader title={t('settings')} eyebrow={t('account')} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={openEditProfile} style={({ pressed }) => [styles.identity, direction, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.7 : 1 }]}>
-          <Avatar name={user.displayName} uri={user.avatarUrl} size={88} online={connected} />
-          <View style={{ flex: 1 }}><Text style={[styles.identityName, alignment, { color: colors.text }]}>{user.displayName}</Text><Text style={[styles.identityEmail, alignment, { color: colors.muted }]}>{user.email}</Text>{phoneLabel ? <Text style={[styles.identityPhone, alignment, { color: colors.muted }]}>{phoneLabel}</Text> : null}<Text style={[styles.editHint, alignment, { color: colors.accent }]}><MaterialCommunityIcons name="pencil" size={11} color={colors.accent} /> {t('editProfile')}</Text></View>
-        </Pressable>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+        scrollEventThrottle={16}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+      >
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.surface + 'CC' }]}>
+            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.text} />
+          </Pressable>
+          {!isSelf && (
+            <Pressable style={[styles.backBtn, { backgroundColor: colors.surface + 'CC' }]}>
+              <MaterialCommunityIcons name="dots-horizontal" size={22} color={colors.text} />
+            </Pressable>
+          )}
+        </View>
 
-        {followStats ? (
-          <View style={[styles.statsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Pressable style={styles.statItem} onPress={() => router.push({ pathname: '/feed/followers/[id]' as any, params: { id: user.id, tab: 'followers' } })}>
-              <Text style={[styles.statNum, { color: colors.text }]}>{followStats.followerCount}</Text>
-              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('followers')}</Text>
-            </Pressable>
-            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <Pressable style={styles.statItem} onPress={() => router.push({ pathname: '/feed/followers/[id]' as any, params: { id: user.id, tab: 'following' } })}>
-              <Text style={[styles.statNum, { color: colors.text }]}>{followStats.followingCount}</Text>
-              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('following')}</Text>
-            </Pressable>
-            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statNum, { color: colors.text }]}>{followStats.postCount}</Text>
-              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('posts')}</Text>
+        <Animated.View style={[styles.coverWrap, { height: coverHeight }]}>
+          {user.coverUrl ? (
+            <Image source={{ uri: user.coverUrl }} style={styles.coverImage} />
+          ) : (
+            <View style={[styles.coverPlaceholder, { backgroundColor: accent + '20' }]}>
+              <MaterialCommunityIcons name="image-outline" size={40} color={accent + '60'} />
             </View>
+          )}
+          <View style={[styles.coverGradient, { backgroundColor: colors.background + '00' }]} />
+        </Animated.View>
+
+        <View style={styles.avatarRow}>
+          <View style={[styles.avatarRing, { borderColor: accent }]}>
+            <Avatar name={user.displayName} uri={user.avatarUrl} size={96} online={isSelf ? connected : user.isOnline} />
+          </View>
+        </View>
+
+        <View style={styles.infoSection}>
+          <Text style={[styles.name, { color: colors.text }]}>{user.displayName}</Text>
+          <Text style={[styles.username, { color: colors.muted }]}>@{user.username}</Text>
+
+          {user.customStatus ? (
+            <View style={[styles.statusBadge, { backgroundColor: accent + '18' }]}>
+              <Text style={[styles.statusText, { color: accent }]}>{user.customStatus}</Text>
+            </View>
+          ) : null}
+
+          {user.bio ? (
+            <Text style={[styles.bio, { color: colors.text }]}>{user.bio}</Text>
+          ) : null}
+
+          <View style={styles.infoRow}>
+            {user.location ? (
+              <View style={styles.infoItem}>
+                <MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.muted} />
+                <Text numberOfLines={1} style={[styles.infoText, { color: colors.muted }]}>{user.location}</Text>
+              </View>
+            ) : null}
+            {user.website ? (
+              <View style={styles.infoItem}>
+                <MaterialCommunityIcons name="link-variant" size={14} color={colors.muted} />
+                <Text numberOfLines={1} style={[styles.infoText, { color: accent }]}>{user.website}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {isSelf && profileViewCount ? (
+            <View style={[styles.viewBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="eye-outline" size={14} color={colors.muted} />
+              <Text style={[styles.viewText, { color: colors.muted }]}>{profileViewCount} {t('profileViews')}</Text>
+            </View>
+          ) : null}
+
+          {!isSelf && mutualFriendCount ? (
+            <Text style={[styles.mutualText, { color: colors.muted }]}>{mutualFriendCount} {t('mutualFriends')}</Text>
+          ) : null}
+        </View>
+
+        <View style={[styles.statsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Pressable style={styles.statItem} onPress={() => router.push({ pathname: '/feed/followers/[id]' as any, params: { id: userId, tab: 'followers' } })}>
+            <Text style={[styles.statNum, { color: accent }]}>{followerCount}</Text>
+            <Text style={[styles.statLabel, { color: colors.muted }]}>{t('followers')}</Text>
+          </Pressable>
+          <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+          <Pressable style={styles.statItem} onPress={() => router.push({ pathname: '/feed/followers/[id]' as any, params: { id: userId, tab: 'following' } })}>
+            <Text style={[styles.statNum, { color: accent }]}>{followingCount}</Text>
+            <Text style={[styles.statLabel, { color: colors.muted }]}>{t('following')}</Text>
+          </Pressable>
+          <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+          <View style={styles.statItem}>
+            <Text style={[styles.statNum, { color: accent }]}>{postCount}</Text>
+            <Text style={[styles.statLabel, { color: colors.muted }]}>{t('posts')}</Text>
+          </View>
+        </View>
+
+        {isSelf ? (
+          <Pressable onPress={() => router.push('/settings/edit-profile')} style={({ pressed }) => [styles.actionBtn, { backgroundColor: accent, opacity: pressed ? 0.8 : 1 }]}>
+            <MaterialCommunityIcons name="pencil" size={16} color="#FFF" />
+            <Text style={styles.actionBtnText}>{t('editProfile')}</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.actionRow}>
+            <Pressable onPress={async () => { try { await api.toggleFollow(userId); await loadProfile(); } catch {} }} style={({ pressed }) => [styles.actionBtn, { flex: 1, backgroundColor: isFollowing ? colors.surface : accent, borderWidth: isFollowing ? 1 : 0, borderColor: colors.border, opacity: pressed ? 0.8 : 1 }]}>
+              <MaterialCommunityIcons name={isFollowing ? 'account-check-outline' : 'account-plus-outline'} size={16} color={isFollowing ? colors.text : '#FFF'} />
+              <Text style={[styles.actionBtnText, isFollowing && { color: colors.text }]}>{isFollowing ? t('following') : t('follow')}</Text>
+            </Pressable>
+            <Pressable onPress={() => {}} style={({ pressed }) => [styles.actionBtnSecondary, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.8 : 1 }]}>
+              <MaterialCommunityIcons name="message-outline" size={16} color={colors.text} />
+            </Pressable>
+          </View>
+        )}
+
+        {highlights.length > 0 ? (
+          <View style={styles.highlightsSection}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.highlightsRow}>
+              {highlights.map((h) => (
+                <Pressable key={h.id} style={styles.highlightItem}>
+                  <View style={[styles.highlightRing, { borderColor: accent }]}>
+                    {h.coverUrl ? <Image source={{ uri: h.coverUrl }} style={styles.highlightCover} /> : <View style={[styles.highlightPlaceholder, { backgroundColor: accent + '20' }]}><MaterialCommunityIcons name="star-outline" size={18} color={accent} /></View>}
+                  </View>
+                  <Text style={[styles.highlightTitle, { color: colors.text }]} numberOfLines={1}>{h.title}</Text>
+                </Pressable>
+              ))}
+              {isSelf ? (
+                <Pressable style={styles.highlightItem}>
+                  <View style={[styles.highlightRing, { borderColor: colors.border }]}>
+                    <View style={[styles.highlightPlaceholder, { backgroundColor: colors.surface }]}>
+                      <MaterialCommunityIcons name="plus" size={20} color={colors.muted} />
+                    </View>
+                  </View>
+                  <Text style={[styles.highlightTitle, { color: colors.muted }]}>{t('new')}</Text>
+                </Pressable>
+              ) : null}
+            </ScrollView>
           </View>
         ) : null}
 
-        <Text style={[styles.sectionLabel, alignment, { color: colors.muted }]}>{t('settings').toUpperCase()}</Text>
-        <SettingRow icon="bell-outline" title={t('notification')} detail={pushState === 'ready' ? 'Enabled' : pushState === 'loading' ? 'Requesting permission...' : pushState === 'unavailable' ? 'Unavailable' : 'Push messages and alerts'} active={pushState === 'ready'} onPress={() => void enablePush()} rtl={isRTL} />
-        <SettingRow icon="weather-night" title={t('darkMode')} detail={dark ? 'On' : 'Off'} active={dark} onPress={() => setMode(dark ? 'light' : 'dark')} rtl={isRTL} />
-        <SettingRow icon="music-note-outline" title={t('soundEffects')} detail={t('requestSound')} onPress={() => router.push('/settings/sounds')} rtl={isRTL} />
-        <SettingRow icon="translate" title={t('language')} detail={`${currentLanguage.flag}  ${currentLanguage.nativeLabel}`} onPress={() => setLanguageOpen(true)} rtl={isRTL} />
-        <SettingRow icon="account-edit-outline" title={t('editProfile')} detail={user.email ?? '@' + user.username} onPress={openEditProfile} rtl={isRTL} />
-        <SettingRow icon="newspaper-variant-outline" title={t('feed')} detail={t('feed')} onPress={() => router.push('/(tabs)/feed')} rtl={isRTL} />
+        <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
+          {(['posts', 'media', 'likes', 'about'] as Tab[]).map((t2) => (
+            <Pressable key={t2} onPress={() => setTab(t2)} style={[styles.tabItem, tab === t2 && { borderBottomColor: accent, borderBottomWidth: 2 }]}>
+              <MaterialCommunityIcons name={tabIcon(t2)} size={20} color={tab === t2 ? accent : colors.muted} />
+            </Pressable>
+          ))}
+        </View>
 
-        <Pressable onPress={() => setLogoutOpen(true)} style={({ pressed }) => [styles.logout, direction, { borderColor: colors.border, opacity: pressed ? 0.55 : 1 }]}><MaterialCommunityIcons name="logout" size={20} color={colors.danger} /><Text style={{ color: colors.danger, fontWeight: '800' }}>{t('signOut')}</Text></Pressable>
+        {tab === 'posts' && posts.map((p) => <PostCard key={p.id} post={p} onRefresh={onRefresh} />)}
+        {tab === 'posts' && posts.length === 0 && <EmptyState icon="newspaper-variant-outline" text={t('noPostsYet')} color={colors.muted} />}
 
-        <Pressable onPress={() => router.push('/settings/delete-account')} style={({ pressed }) => [styles.deleteAccount, direction, { backgroundColor: colors.surface, borderColor: colors.danger, opacity: pressed ? 0.55 : 1 }]}><View style={[styles.deleteIcon, { backgroundColor: colors.danger + '14' }]}><MaterialCommunityIcons name="trash-can-outline" size={20} color={colors.danger} /></View><View style={{ flex: 1 }}><Text style={[styles.deleteTitle, alignment, { color: colors.danger }]}>{t('deleteAccount')}</Text><Text style={[styles.deleteCopy, alignment, { color: colors.muted }]}>{t('deleteAccountSubtitle')}</Text></View><MaterialCommunityIcons name={isRTL ? 'chevron-left' : 'chevron-right'} size={21} color={colors.danger} /></Pressable>
-      </ScrollView>
+        {tab === 'media' && (
+          <View style={styles.mediaGrid}>
+            {media.map((m) => (
+              <Pressable key={m.id} style={styles.mediaItem}>
+                <Image source={{ uri: m.url }} style={styles.mediaImage} />
+              </Pressable>
+            ))}
+          </View>
+        )}
+        {tab === 'media' && media.length === 0 && <EmptyState icon="image-outline" text={t('noMediaYet')} color={colors.muted} />}
 
-      <Modal transparent animationType="fade" visible={logoutOpen} onRequestClose={() => setLogoutOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setLogoutOpen(false)}>
-          <Pressable style={[styles.logoutModal, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => undefined}>
-            <View style={[styles.logoutIcon, { backgroundColor: colors.danger + '1A' }]}><MaterialCommunityIcons name="logout-variant" size={28} color={colors.danger} /></View>
-            <Text style={[styles.logoutTitle, alignment, { color: colors.text }]}>{t('signOut')}?</Text>
-            <Text style={[styles.logoutCopy, alignment, { color: colors.muted }]}>You'll need to sign in again to keep chatting.</Text>
-            <View style={[styles.logoutActions, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-              <Pressable onPress={() => setLogoutOpen(false)} style={({ pressed }) => [styles.cancelBtn, { borderColor: colors.border, backgroundColor: pressed ? colors.elevated : colors.surface }]}><Text style={{ color: colors.text, fontWeight: '800' }}>Cancel</Text></Pressable>
-              <Pressable onPress={() => { setLogoutOpen(false); void logout(); }} style={({ pressed }) => [styles.confirmBtn, { backgroundColor: colors.danger, opacity: pressed ? 0.7 : 1 }]}><MaterialCommunityIcons name="logout" size={17} color="#FFFFFF" /><Text style={{ color: '#FFFFFF', fontWeight: '900' }}>{t('signOut')}</Text></Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        {tab === 'likes' && likes.map((p) => <PostCard key={p.id} post={p} onRefresh={onRefresh} />)}
+        {tab === 'likes' && likes.length === 0 && <EmptyState icon="heart-outline" text={t('noLikesYet')} color={colors.muted} />}
 
-      <Modal transparent animationType="fade" visible={languageOpen} onRequestClose={() => setLanguageOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setLanguageOpen(false)}>
-          <Pressable style={[styles.languageModal, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => undefined}>
-            <View style={[styles.modalHeader, direction]}><Text style={[styles.modalTitle, alignment, { color: colors.text }]}>{t('chooseLanguage')}</Text><Pressable accessibilityLabel="Close" onPress={() => setLanguageOpen(false)} style={styles.closeButton}><MaterialCommunityIcons name="close" size={21} color={colors.text} /></Pressable></View>
-            {languages.map((item) => <Pressable key={item.code} onPress={() => { setLanguage(item.code as LanguageCode); setLanguageOpen(false); }} style={({ pressed }) => [styles.languageRow, direction, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}><Text style={styles.flagIcon}>{item.flag}</Text><View style={{ flex: 1 }}><Text style={[styles.languageName, alignment, { color: colors.text }]}>{item.label}</Text><Text style={[styles.languageNative, alignment, { color: colors.muted }]}>{item.nativeLabel}</Text></View>{item.code === language ? <MaterialCommunityIcons name="check" size={20} color={colors.accent} /> : null}</Pressable>)}
-          </Pressable>
-        </Pressable>
-      </Modal>
+        {tab === 'about' && (
+          <View style={styles.aboutSection}>
+            {socialLinks.length > 0 ? (
+              <View style={styles.socialSection}>
+                {socialLinks.map((link) => {
+                  const platform = SOCIAL_PLATFORMS.find((p) => p.id === link.platform);
+                  return (
+                    <Pressable key={link.id} onPress={() => Linking.openURL(link.url).catch(() => {})} style={({ pressed }) => [aboutStyles.row, { borderBottomColor: colors.border, opacity: pressed ? 0.7 : 1 }]}>
+                      <View style={[aboutStyles.iconWrap, { backgroundColor: (platform?.color || accent) + '18' }]}>
+                        <MaterialCommunityIcons name={platform?.icon || 'link'} size={18} color={platform?.color || accent} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[aboutStyles.label, { color: colors.muted }]}>{platform?.label || link.platform}</Text>
+                        <Text style={[aboutStyles.value, { color: accent }]} numberOfLines={1}>@{link.username}</Text>
+                      </View>
+                      <MaterialCommunityIcons name="open-in-new" size={14} color={colors.faint} />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+            <AboutRow icon="calendar" label={t('joined')} value={formatDate(user.createdAt || null)} colors={colors} accent={accent} />
+            {user.location ? <AboutRow icon="map-marker" label={t('location')} value={user.location} colors={colors} accent={accent} /> : null}
+            {user.website ? <AboutRow icon="link" label={t('website')} value={user.website} colors={colors} accent={accent} /> : null}
+            {user.dateOfBirth ? <AboutRow icon="cake" label={t('birthday')} value={user.dateOfBirth} colors={colors} accent={accent} /> : null}
+          </View>
+        )}
+
+        <View style={{ height: 40 }} />
+      </Animated.ScrollView>
     </SafeAreaView>
   );
 }
 
-function SettingRow({ icon, title, detail, active, onPress, rtl }: { icon: React.ComponentProps<typeof MaterialCommunityIcons>['name']; title: string; detail: string; active?: boolean; onPress: () => void; rtl: boolean }) {
-  const { colors } = useTheme();
-  return <Pressable onPress={onPress} style={({ pressed }) => [styles.settingRow, { flexDirection: rtl ? 'row-reverse' : 'row', backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}><View style={[styles.settingIcon, { backgroundColor: active ? colors.accent : colors.accentSoft }]}><MaterialCommunityIcons name={icon} size={21} color={active ? colors.accentText : colors.accent} /></View><View style={{ flex: 1 }}><Text style={[styles.settingTitle, { color: colors.text, textAlign: rtl ? 'right' : 'left' }]}>{title}</Text><Text style={[styles.settingCopy, { color: colors.muted, textAlign: rtl ? 'right' : 'left' }]}>{detail}</Text></View><MaterialCommunityIcons name={rtl ? 'chevron-left' : 'chevron-right'} size={21} color={colors.faint} /></Pressable>;
+function tabIcon(tab: Tab): React.ComponentProps<typeof MaterialCommunityIcons>['name'] {
+  if (tab === 'posts') return 'newspaper-variant-outline';
+  if (tab === 'media') return 'image-multiple-outline';
+  if (tab === 'likes') return 'heart-outline';
+  return 'information-outline';
+}
+
+function formatDate(d: string | null) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function AboutRow({ icon, label, value, colors, accent }: { icon: string; label: string; value: string; colors: any; accent: string }) {
+  return (
+    <View style={[aboutStyles.row, { borderBottomColor: colors.border }]}>
+      <View style={[aboutStyles.iconWrap, { backgroundColor: accent + '15' }]}>
+        <MaterialCommunityIcons name={icon as any} size={18} color={accent} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[aboutStyles.label, { color: colors.muted }]}>{label}</Text>
+        <Text style={[aboutStyles.value, { color: colors.text }]}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+const aboutStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, gap: 12 },
+  iconWrap: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  label: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  value: { fontSize: 14, fontWeight: '600', marginTop: 2 },
+});
+
+function EmptyState({ icon, text, color }: { icon: string; text: string; color: string }) {
+  return (
+    <View style={emptyStyles.wrap}>
+      <MaterialCommunityIcons name={icon as any} size={44} color={color + '40'} />
+      <Text style={[emptyStyles.text, { color }]}>{text}</Text>
+    </View>
+  );
+}
+
+const emptyStyles = StyleSheet.create({
+  wrap: { alignItems: 'center', paddingTop: 60, gap: 10 },
+  text: { fontSize: 14, fontWeight: '500' },
+});
+
+function ProfileSkeleton({ colors }: { colors: any }) {
+  return (
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+      <View style={{ padding: 16 }}>
+        <Skeleton width="100%" height={160} radius={0} />
+        <View style={{ flexDirection: 'row', marginTop: -48, paddingHorizontal: 16 }}>
+          <Skeleton width={96} height={96} radius={48} />
+        </View>
+        <Skeleton width="60%" height={20} radius={4} style={{ marginTop: 16 }} />
+        <Skeleton width="40%" height={14} radius={4} style={{ marginTop: 8 }} />
+        <Skeleton width="100%" height={14} radius={4} style={{ marginTop: 12 }} />
+        <Skeleton width="100%" height={60} radius={12} style={{ marginTop: 16 }} />
+      </View>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 }, content: { paddingHorizontal: 16, paddingBottom: 32 }, identity: { minHeight: 122, borderWidth: 1, borderRadius: 8, padding: 16, alignItems: 'center', gap: 15 }, identityName: { fontSize: 18, fontWeight: '800' }, identityEmail: { fontSize: 12, marginTop: 4 }, identityPhone: { fontSize: 12, marginTop: 2 }, editHint: { fontSize: 12, fontWeight: '800', marginTop: 8 },
-  statsCard: { flexDirection: 'row', borderWidth: 1, borderRadius: 12, padding: 16, marginTop: 12, alignItems: 'center' },
+  safe: { flex: 1 },
+  header: { position: 'absolute', top: 8, left: 0, right: 0, zIndex: 10, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12 },
+  backBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  coverWrap: { overflow: 'hidden' },
+  coverImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  coverPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  coverGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 40 },
+  avatarRow: { alignItems: 'center', marginTop: -52 },
+  avatarRing: { width: 104, height: 104, borderRadius: 52, borderWidth: 3, padding: 2 },
+  infoSection: { alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, gap: 4 },
+  name: { fontSize: 22, fontWeight: '900', textAlign: 'center' },
+  username: { fontSize: 14, fontWeight: '500' },
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, marginTop: 4 },
+  statusText: { fontSize: 13, fontWeight: '600' },
+  bio: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 6, paddingHorizontal: 10 },
+  infoRow: { flexDirection: 'row', gap: 16, marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' },
+  infoItem: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: 160 },
+  infoText: { fontSize: 13, fontWeight: '500', flexShrink: 1 },
+  viewBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, marginTop: 8, borderWidth: 1 },
+  viewText: { fontSize: 12, fontWeight: '500' },
+  mutualText: { fontSize: 12, fontWeight: '500', marginTop: 6 },
+  statsCard: { flexDirection: 'row', marginHorizontal: 20, marginTop: 14, borderWidth: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   statItem: { flex: 1, alignItems: 'center' },
   statNum: { fontSize: 18, fontWeight: '800' },
   statLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
-  statDivider: { width: 1, height: 30 },
-  sectionLabel: { fontSize: 10, fontWeight: '900', marginTop: 25, marginBottom: 9 }, settingRow: { minHeight: 70, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, marginBottom: 8, alignItems: 'center', gap: 11 }, settingIcon: { width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }, settingTitle: { fontSize: 14, fontWeight: '800' }, settingCopy: { fontSize: 11, marginTop: 3 },
-  logout: { minHeight: 50, borderWidth: 1, borderRadius: 7, marginTop: 26, alignItems: 'center', justifyContent: 'center', gap: 8 }, backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,.45)', justifyContent: 'center', padding: 24 }, logoutModal: { borderWidth: 1, borderRadius: 16, padding: 20, alignItems: 'center', maxWidth: 420, width: '100%', alignSelf: 'center' }, logoutIcon: { width: 62, height: 62, borderRadius: 31, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }, logoutTitle: { fontSize: 18, fontWeight: '900' }, logoutCopy: { fontSize: 13, marginTop: 6, textAlign: 'center', lineHeight: 19 }, logoutActions: { flexDirection: 'row', gap: 10, marginTop: 20, width: '100%' }, cancelBtn: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, confirmBtn: { flex: 1, minHeight: 48, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 6, flexDirection: 'row' }, deleteAccount: { minHeight: 70, borderWidth: 1, borderRadius: 16, marginTop: 10, paddingHorizontal: 12, alignItems: 'center', gap: 11 }, deleteIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }, deleteTitle: { fontSize: 14, fontWeight: '800', marginTop: 3 }, deleteCopy: { fontSize: 11, marginTop: 2, lineHeight: 15 }, languageModal: { borderWidth: 1, borderRadius: 8, padding: 14, maxWidth: 480, width: '100%', alignSelf: 'center' }, modalHeader: { minHeight: 44, alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }, modalTitle: { fontSize: 17, fontWeight: '800', flex: 1 }, closeButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' }, languageRow: { minHeight: 60, borderTopWidth: StyleSheet.hairlineWidth, alignItems: 'center', gap: 11, paddingHorizontal: 6 }, flagIcon: { fontSize: 26 }, languageName: { fontSize: 14, fontWeight: '800' }, languageNative: { fontSize: 12, marginTop: 2 },
+  statDivider: { width: 1, height: 28 },
+  actionBtn: { flexDirection: 'row', marginHorizontal: 20, marginTop: 12, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  actionBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  actionRow: { flexDirection: 'row', marginHorizontal: 20, marginTop: 12, gap: 10 },
+  actionBtnSecondary: { width: 48, height: 48, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  highlightsSection: { marginTop: 16 },
+  highlightsRow: { paddingHorizontal: 20, gap: 14 },
+  highlightItem: { alignItems: 'center', width: 72 },
+  highlightRing: { width: 68, height: 68, borderRadius: 34, borderWidth: 2, padding: 2 },
+  highlightCover: { width: 64, height: 64, borderRadius: 32 },
+  highlightPlaceholder: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  highlightTitle: { fontSize: 11, fontWeight: '600', marginTop: 4, textAlign: 'center' },
+  tabBar: { flexDirection: 'row', marginTop: 16, borderBottomWidth: 1 },
+  tabItem: { flex: 1, alignItems: 'center', paddingVertical: 12 },
+  mediaGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 1 },
+  mediaItem: { width: '33.33%', aspectRatio: 1, padding: 1 },
+  mediaImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  aboutSection: { paddingTop: 8 },
+  socialSection: { marginBottom: 8 },
 });

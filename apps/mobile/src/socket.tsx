@@ -73,7 +73,7 @@ export function SocketProvider({ children }: PropsWithChildren) {
             emit({ type, conversationId: String(raw.conversation_id ?? ''), userId: String(raw.user_id ?? ''), ...(raw.reason ? { reason: String(raw.reason) as 'busy' | 'missed' | 'no-answer' | 'declined' } : {}) });
           } else if (type === 'post.created' || type === 'post.updated') {
             const p: any = raw.post ?? raw;
-            emit({ type, post: { id: String(p.id), author: { id: String(p.author?.id ?? ''), username: String(p.author?.username ?? ''), displayName: String(p.author?.display_name ?? ''), bio: p.author?.bio ?? null, avatarUrl: p.author?.avatar_url ?? null, isOnline: p.author?.is_online ?? false, lastSeenAt: p.author?.last_seen_at ?? null }, content: p.content ?? null, visibility: p.visibility ?? 'public', media: (p.media ?? []).map((m: any) => ({ id: String(m.id), url: String(m.url), mimeType: String(m.mime_type), sortOrder: Number(m.sort_order ?? 0) })), reactions: (p.reactions ?? []).map((r: any) => ({ emoji: String(r.emoji), userId: String(r.user_id) })), likeCount: Number(p.like_count ?? 0), commentCount: Number(p.comment_count ?? 0), shareCount: Number(p.share_count ?? 0), myLikeEmoji: p.my_like_emoji ?? null, myBookmarked: p.my_bookmarked === true, myShared: p.my_shared === true, createdAt: String(p.created_at), updatedAt: p.updated_at ? String(p.updated_at) : null } });
+            emit({ type, post: { id: String(p.id), author: { id: String(p.author?.id ?? ''), username: String(p.author?.username ?? ''), displayName: String(p.author?.display_name ?? ''), bio: p.author?.bio ?? null, avatarUrl: p.author?.avatar_url ?? null, isOnline: p.author?.is_online ?? false, lastSeenAt: p.author?.last_seen_at ?? null }, content: p.content ?? null, visibility: p.visibility ?? 'public', media: (p.media ?? []).map((m: any) => ({ id: String(m.id), url: String(m.url), mimeType: String(m.mime_type), sortOrder: Number(m.sort_order ?? 0) })), reactions: (p.reactions ?? []).map((r: any) => ({ emoji: String(r.emoji), userId: String(r.user_id), displayName: String(r.display_name ?? ''), avatarUrl: r.avatar_url ?? null })), likeCount: Number(p.like_count ?? 0), commentCount: Number(p.comment_count ?? 0), shareCount: Number(p.share_count ?? 0), myLikeEmoji: p.my_like_emoji ?? null, myBookmarked: p.my_bookmarked === true, myShared: p.my_shared === true, createdAt: String(p.created_at), updatedAt: p.updated_at ? String(p.updated_at) : null } });
           } else if (type === 'post.deleted') {
             emit({ type, postId: String(raw.post_id ?? raw.id ?? '') });
           } else if (type === 'comment.created') {
@@ -88,6 +88,13 @@ export function SocketProvider({ children }: PropsWithChildren) {
             emit({ type, story: { id: String(s.id), mediaUrl: String(s.media_url), mediaType: s.media_type === 'video' ? 'video' : 'image', content: s.content ?? null, createdAt: String(s.created_at), expiresAt: String(s.expires_at), viewCount: Number(s.view_count ?? 0), myViewed: false } });
           } else if (type === 'story.deleted') {
             emit({ type, storyId: String(raw.story_id ?? raw.id ?? '') });
+          } else if (type === 'story.reacted') {
+            emit({ type, storyId: String(raw.story_id), userId: String(raw.user_id), displayName: String(raw.display_name ?? ''), avatarUrl: raw.avatar_url ? String(raw.avatar_url) : null, emoji: String(raw.emoji ?? '❤️'), reactionCount: Number(raw.reaction_count ?? 0) });
+          } else if (type === 'story.replied') {
+            const rp: any = raw.reply ?? raw;
+            emit({ type, storyId: String(raw.story_id), replyId: String(rp.id ?? ''), senderId: String(rp.sender_id ?? raw.sender_id ?? ''), senderName: String(rp.sender_name ?? raw.sender_name ?? ''), senderAvatar: rp.sender_avatar ?? raw.sender_avatar ?? null, content: rp.content ? String(rp.content) : null, createdAt: rp.created_at ? String(rp.created_at) : '' });
+          } else if (type === 'story.viewed') {
+            emit({ type, storyId: String(raw.story_id), userId: String(raw.user_id), displayName: String(raw.display_name ?? '') });
           } else if (type === 'follow.updated') {
             emit({ type, userId: String(raw.user_id ?? ''), followerCount: Number(raw.follower_count ?? 0), followingCount: Number(raw.following_count ?? 0), isFollowing: raw.is_following === true });
           }

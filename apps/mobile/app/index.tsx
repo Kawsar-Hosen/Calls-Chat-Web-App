@@ -3,5 +3,5 @@ import { useAuth } from '@/auth';
 
 export default function Index() {
   const { user } = useAuth();
-  return <Redirect href={user ? '/conversations' : '/login'} />;
+  return <Redirect href={user ? '/(tabs)/feed' : '/login'} />;
 }

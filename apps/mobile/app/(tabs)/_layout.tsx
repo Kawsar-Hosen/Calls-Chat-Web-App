@@ -20,7 +20,7 @@ export default function TabsLayout() {
        <Tabs.Screen name="feed" options={{ title: t('feed'), tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="home-outline" size={size} color={color} /> }} />
        <Tabs.Screen name="conversations" options={{ title: t('messages'), tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="message-text-outline" size={size} color={color} /> }} />
        <Tabs.Screen name="contacts" options={{ title: t('contacts'), tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="account-group-outline" size={size} color={color} /> }} />
-       <Tabs.Screen name="profile" options={{ title: t('settings'), tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="cog-outline" size={size} color={color} /> }} />
+       <Tabs.Screen name="profile" options={{ title: t('profile'), tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="account-circle-outline" size={size} color={color} /> }} />
     </Tabs>
   );
 }

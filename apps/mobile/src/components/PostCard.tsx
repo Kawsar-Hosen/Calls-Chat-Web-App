@@ -10,6 +10,7 @@ import type { Post } from '@/types';
 import { Avatar } from '@/ui';
 import { CommentSheet } from '@/components/CommentSheet';
 import { ShareSheet } from '@/components/ShareSheet';
+import { ReactionSheet } from '@/components/ReactionSheet';
 import { playSound } from '@/sounds';
 import { FluentEmoji } from '@/emoji';
 
@@ -63,6 +64,7 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
   const [expanded, setExpanded] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [showReactionsDetail, setShowReactionsDetail] = useState(false);
   const [floatingReactions, setFloatingReactions] = useState<{ id: number; emoji: string }[]>([]);
   const floatIdRef = useRef(0);
   const [localOverrides, setLocalOverrides] = useState<{ myLikeEmoji?: string | null; likeCount?: number; myBookmarked?: boolean; myShared?: boolean; shareCount?: number }>({});
@@ -115,8 +117,13 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
 
   const isLong = (post.content?.length ?? 0) > 200;
   const displayContent = isLong && !expanded ? post.content?.slice(0, 200) + '...' : post.content;
-
   const mediaCount = post.media.length;
+
+  const topEmojis = (() => {
+    const counts: Record<string, number> = {};
+    for (const r of post.reactions) { counts[r.emoji] = (counts[r.emoji] ?? 0) + 1; }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  })();
 
   return (
     <>
@@ -170,16 +177,15 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
         </View>
       ) : null}
 
-      {effectiveLikeCount > 0 || post.commentCount > 0 || effectiveShareCount > 0 ? (
+      {topEmojis.length > 0 || post.commentCount > 0 || effectiveShareCount > 0 ? (
         <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
-          <View style={styles.statsLeft}>
-            {effectiveLikeCount > 0 ? (
-              <View style={styles.reactionBadge}>
-                <FluentEmoji char={effectiveMyLike || '👍'} size={16} />
-                <Text style={[styles.statNum, { color: colors.muted }]}>{effectiveLikeCount}</Text>
+          <Pressable style={styles.statsLeft} onPress={() => { if (post.reactions.length > 0) setShowReactionsDetail(true); }}>
+            {topEmojis.map(([emoji]) => (
+              <View key={emoji} style={styles.reactionBadge}>
+                <FluentEmoji char={emoji} size={18} />
               </View>
-            ) : null}
-          </View>
+            ))}
+          </Pressable>
           <View style={styles.statsRight}>
             {post.commentCount > 0 ? <Text style={[styles.statText, { color: colors.muted }]}>{post.commentCount} {t('comments')}</Text> : null}
             {effectiveShareCount > 0 ? <Text style={[styles.statText, { color: colors.muted }]}>{effectiveShareCount} {t('shares')}</Text> : null}
@@ -226,6 +232,7 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
     </Pressable>
     <CommentSheet visible={showComments} postId={post.id} onClose={() => setShowComments(false)} {...(onRefresh ? { onCommentAdded: onRefresh } : {})} />
     <ShareSheet visible={showShare} postId={post.id} shareCount={effectiveShareCount} myShared={effectiveShared} onClose={() => setShowShare(false)} {...(onRefresh ? { onShared: onRefresh } : {})} />
+    <ReactionSheet visible={showReactionsDetail} reactions={post.reactions} onClose={() => setShowReactionsDetail(false)} />
     </>
   );
 });
@@ -239,8 +246,8 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   time: { fontSize: 12 },
   dot: { fontSize: 12 },
-  followBtnInline: { marginLeft: 6, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12, borderWidth: 1 },
-  followBtnInlineText: { fontSize: 11, fontWeight: '700' },
+  followBtnInline: { marginLeft: 8 },
+  followBtnInlineText: { fontSize: 13, fontWeight: '700' },
   contentWrap: { paddingHorizontal: 14, paddingBottom: 10 },
   content: { fontSize: 14, lineHeight: 20 },
   seeMore: { fontSize: 13, fontWeight: '600', marginTop: 4 },

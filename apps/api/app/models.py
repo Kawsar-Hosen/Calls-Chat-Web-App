@@ -23,11 +23,25 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(80))
     bio: Mapped[str | None] = mapped_column(String(500))
     avatar_url: Mapped[str | None] = mapped_column(String(2048))
+    cover_url: Mapped[str | None] = mapped_column(String(2048))
+    custom_status: Mapped[str | None] = mapped_column(String(100))
+    accent_color: Mapped[str | None] = mapped_column(String(9))
+    location: Mapped[str | None] = mapped_column(String(120))
+    website: Mapped[str | None] = mapped_column(String(200))
+    date_of_birth: Mapped[str | None] = mapped_column(String(10))
     phone_code: Mapped[str | None] = mapped_column(String(8))
     phone: Mapped[str | None] = mapped_column(String(20))
     password_hash: Mapped[str] = mapped_column(String(255))
     is_online: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    online_visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    who_can_message: Mapped[str] = mapped_column(String(20), default="everyone")
+    who_can_see_posts: Mapped[str] = mapped_column(String(20), default="public")
+    read_receipts: Mapped[bool] = mapped_column(Boolean, default=True)
+    typing_indicator: Mapped[bool] = mapped_column(Boolean, default=True)
+    font_size: Mapped[str] = mapped_column(String(10), default="default")
+    chat_wallpaper: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -321,3 +335,85 @@ class StoryView(Base):
     story_id: Mapped[str] = mapped_column(ForeignKey("stories.id", ondelete="CASCADE"), index=True)
     viewer_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class StoryReaction(Base):
+    __tablename__ = "story_reactions"
+    __table_args__ = (UniqueConstraint("story_id", "user_id", name="uq_story_reaction"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    story_id: Mapped[str] = mapped_column(ForeignKey("stories.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    emoji: Mapped[str] = mapped_column(String(10), default="❤️")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class StoryReply(Base):
+    __tablename__ = "story_replies"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    story_id: Mapped[str] = mapped_column(ForeignKey("stories.id", ondelete="CASCADE"), index=True)
+    sender_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    content: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class StoryHighlight(Base):
+    __tablename__ = "story_highlights"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(50))
+    cover_url: Mapped[str | None] = mapped_column(String(2048))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class StoryHighlightItem(Base):
+    __tablename__ = "story_highlight_items"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    highlight_id: Mapped[str] = mapped_column(ForeignKey("story_highlights.id", ondelete="CASCADE"), index=True)
+    story_id: Mapped[str] = mapped_column(ForeignKey("stories.id", ondelete="CASCADE"), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ProfileView(Base):
+    __tablename__ = "profile_views"
+    __table_args__ = (UniqueConstraint("viewer_id", "profile_id", name="uq_profile_view_per_day"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    viewer_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    profile_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SocialLink(Base):
+    __tablename__ = "social_links"
+    __table_args__ = (UniqueConstraint("user_id", "platform", name="uq_social_link_per_platform"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    platform: Mapped[str] = mapped_column(String(30))
+    username: Mapped[str] = mapped_column(String(120))
+    url: Mapped[str] = mapped_column(String(300))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class NotificationPreference(Base):
+    __tablename__ = "notification_preferences"
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    messages: Mapped[bool] = mapped_column(Boolean, default=True)
+    calls: Mapped[bool] = mapped_column(Boolean, default=True)
+    posts: Mapped[bool] = mapped_column(Boolean, default=True)
+    comments: Mapped[bool] = mapped_column(Boolean, default=True)
+    reactions: Mapped[bool] = mapped_column(Boolean, default=True)
+    follows: Mapped[bool] = mapped_column(Boolean, default=True)
+    mentions: Mapped[bool] = mapped_column(Boolean, default=True)
+    group_activity: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Report(Base):
+    __tablename__ = "reports"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    reporter_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    type: Mapped[str] = mapped_column(String(30))
+    target_id: Mapped[str | None] = mapped_column(String(36))
+    reason: Mapped[str] = mapped_column(String(500))
+    details: Mapped[str | None] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

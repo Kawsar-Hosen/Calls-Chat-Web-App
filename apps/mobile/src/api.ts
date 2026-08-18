@@ -1,7 +1,7 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as SecureStore from 'expo-secure-store';
 import { Image } from 'react-native';
-import type { Attachment, AuthResult, BookmarkResponse, CommentPage, Conversation, FollowListPage, FollowResponse, FriendRequest, Group, GroupApplication, GroupCustomization, GroupMember, GroupRole, GroupSettings, GroupSummary, Message, Post, PostComment, PostPage, ReactResponse, ShareResponse, StoryGroup, Tokens, User, UserProfile, UserSearchResult } from './types';
+import type { Attachment, AuthResult, BookmarkResponse, CommentPage, Conversation, FollowListPage, FollowResponse, FriendRequest, Group, GroupApplication, GroupCustomization, GroupMember, GroupRole, GroupSettings, GroupSummary, LocationResult, Message, NotificationPrefs, Post, PostComment, PostPage, ProfileMediaPage, ReactResponse, ShareResponse, SocialLink, StoryGroup, StoryHighlight, StoryHighlightPage, StoryReactionResponse, StoryReplyItem, StoryViewerUser, Tokens, User, UserProfile, UserSearchResult } from './types';
 
 const DEFAULT_CUSTOMIZATION: GroupCustomization = { theme: 'default', font: 'default', wallpaper: 'plain', bubble: 'rounded', density: 'comfortable', radius: 8 };
 
@@ -27,6 +27,7 @@ const API_ORIGIN = API_URL.replace(/\/api\/v1$/, '');
 
 function mapUser(raw: Json): User {
   const avatar = raw.avatar_url ? String(raw.avatar_url) : null;
+  const cover = raw.cover_url ? String(raw.cover_url) : null;
   return {
     id: String(raw.id),
     username: String(raw.username ?? ''),
@@ -34,11 +35,24 @@ function mapUser(raw: Json): User {
     ...(raw.email ? { email: String(raw.email) } : {}),
     bio: raw.bio ? String(raw.bio) : null,
     avatarUrl: avatar && avatar.startsWith('/') ? `${API_ORIGIN}${avatar}` : avatar,
+    coverUrl: cover && cover.startsWith('/') ? `${API_ORIGIN}${cover}` : cover,
+    customStatus: raw.custom_status ? String(raw.custom_status) : null,
+    accentColor: raw.accent_color ? String(raw.accent_color) : null,
+    location: raw.location ? String(raw.location) : null,
+    website: raw.website ? String(raw.website) : null,
+    dateOfBirth: raw.date_of_birth ? String(raw.date_of_birth) : null,
     isOnline: raw.is_online === true,
     lastSeenAt: raw.last_seen_at ? String(raw.last_seen_at) : null,
+    lastSeenVisible: raw.last_seen_visible !== false,
+    onlineVisible: raw.online_visible !== false,
+    whoCanMessage: raw.who_can_message ? String(raw.who_can_message) : 'everyone',
+    whoCanSeePosts: raw.who_can_see_posts ? String(raw.who_can_see_posts) : 'public',
+    readReceipts: raw.read_receipts !== false,
+    typingIndicator: raw.typing_indicator !== false,
     ...(raw.phone_code ? { phoneCode: String(raw.phone_code) } : {}),
     ...(raw.phone ? { phone: String(raw.phone) } : {}),
     ...(raw.remark != null ? { remark: String(raw.remark) } : {}),
+    ...(raw.created_at ? { createdAt: String(raw.created_at) } : {}),
   };
 }
 
@@ -102,7 +116,7 @@ export function mapMessage(raw: Json): Message {
     senderId: String(raw.sender_id),
     content: String(raw.content ?? ''),
     replyToId: raw.reply_to_id ? String(raw.reply_to_id) : null,
-    reactions: ((raw.reactions ?? []) as Json[]).map((reaction) => ({ emoji: String(reaction.emoji), userId: String(reaction.user_id) })),
+    reactions: ((raw.reactions ?? []) as Json[]).map((reaction) => ({ emoji: String(reaction.emoji), userId: String(reaction.user_id), displayName: String(reaction.display_name ?? ''), avatarUrl: reaction.avatar_url != null ? String(reaction.avatar_url) : null })),
     createdAt: String(raw.created_at),
     editedAt: raw.edited_at ? String(raw.edited_at) : null,
     deletedAt: raw.deleted_at ? String(raw.deleted_at) : null,
@@ -123,7 +137,7 @@ function mapPost(raw: Json): Post {
     content: raw.content ? String(raw.content) : null,
     visibility: raw.visibility === 'friends' ? 'friends' : 'public',
     media: ((raw.media ?? []) as Json[]).map((m) => ({ id: String(m.id), url: String(m.url), mimeType: String(m.mime_type), sortOrder: Number(m.sort_order ?? 0) })),
-    reactions: ((raw.reactions ?? []) as Json[]).map((r) => ({ emoji: String(r.emoji), userId: String(r.user_id) })),
+    reactions: ((raw.reactions ?? []) as Json[]).map((r) => ({ emoji: String(r.emoji), userId: String(r.user_id), displayName: String(r.display_name ?? ''), avatarUrl: r.avatar_url != null ? String(r.avatar_url) : null })),
     likeCount: Number(raw.like_count ?? 0),
     commentCount: Number(raw.comment_count ?? 0),
     shareCount: Number(raw.share_count ?? 0),
@@ -142,7 +156,7 @@ function mapComment(raw: Json): PostComment {
     author: mapUser((raw.author ?? {}) as Json),
     content: String(raw.content ?? ''),
     parentId: raw.parent_id ? String(raw.parent_id) : null,
-    reactions: ((raw.reactions ?? []) as Json[]).map((r) => ({ emoji: String(r.emoji), userId: String(r.user_id) })),
+    reactions: ((raw.reactions ?? []) as Json[]).map((r) => ({ emoji: String(r.emoji), userId: String(r.user_id), displayName: String(r.display_name ?? ''), avatarUrl: r.avatar_url != null ? String(r.avatar_url) : null })),
     reactionCount: Number(raw.reaction_count ?? 0),
     replyCount: Number(raw.reply_count ?? 0),
     createdAt: String(raw.created_at),
@@ -286,14 +300,26 @@ export const api = {
   async deleteAccount(password: string, code: string): Promise<void> {
     await request<void>('/account', { method: 'DELETE', body: JSON.stringify({ password, code }) });
   },
-  async updateProfile(data: { displayName?: string; username?: string; bio?: string; avatarUrl?: string | null; email?: string; phoneCode?: string | null; phone?: string | null }) {
+  async updateProfile(data: { displayName?: string; username?: string; bio?: string; avatarUrl?: string | null; customStatus?: string | null; accentColor?: string | null; location?: string | null; website?: string | null; email?: string; phoneCode?: string | null; phone?: string | null; lastSeenVisible?: boolean; onlineVisible?: boolean; whoCanMessage?: string; whoCanSeePosts?: string; readReceipts?: boolean; typingIndicator?: boolean; fontSize?: string; chatWallpaper?: string | null }) {
     const body: Record<string, unknown> = {};
     if (data.displayName !== undefined) body.display_name = data.displayName;
     if (data.username !== undefined) body.username = data.username;
     if (data.bio !== undefined) body.bio = data.bio || null;
     if (data.avatarUrl !== undefined) body.avatar_url = data.avatarUrl;
+    if (data.customStatus !== undefined) body.custom_status = data.customStatus || null;
+    if (data.accentColor !== undefined) body.accent_color = data.accentColor || null;
+    if (data.location !== undefined) body.location = data.location || null;
+    if (data.website !== undefined) body.website = data.website || null;
     if (data.email !== undefined) body.email = data.email;
     if (data.phoneCode !== undefined || data.phone !== undefined) { body.phone_code = data.phoneCode ?? null; body.phone = data.phone ?? null; }
+    if (data.lastSeenVisible !== undefined) body.last_seen_visible = data.lastSeenVisible;
+    if (data.onlineVisible !== undefined) body.online_visible = data.onlineVisible;
+    if (data.whoCanMessage !== undefined) body.who_can_message = data.whoCanMessage;
+    if (data.whoCanSeePosts !== undefined) body.who_can_see_posts = data.whoCanSeePosts;
+    if (data.readReceipts !== undefined) body.read_receipts = data.readReceipts;
+    if (data.typingIndicator !== undefined) body.typing_indicator = data.typingIndicator;
+    if (data.fontSize !== undefined) body.font_size = data.fontSize;
+    if (data.chatWallpaper !== undefined) body.chat_wallpaper = data.chatWallpaper || null;
     return mapUser(await request<Json>('/profile', { method: 'PATCH', body: JSON.stringify(body) }));
   },
   async uploadAvatar(uri: string, onProgress?: (pct: number) => void): Promise<User> {
@@ -333,6 +359,62 @@ export const api = {
       tokens = await refresh();
       await send(tokens);
     }
+    return api.me();
+  },
+  async uploadCover(uri: string, onProgress?: (pct: number) => void): Promise<User> {
+    const form = new FormData();
+    form.append('file', { uri, name: 'cover.jpg', type: 'image/jpeg' } as unknown as Blob);
+    const send = async (tokens: Tokens | null): Promise<void> => {
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API_URL}/profile/cover`);
+        if (tokens?.accessToken) xhr.setRequestHeader('Authorization', `Bearer ${tokens.accessToken}`);
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable && onProgress) onProgress(Math.round((event.loaded / event.total) * 100));
+        };
+        xhr.onload = () => {
+          let url: unknown; let detail: unknown;
+          try {
+            const body = JSON.parse(xhr.responseText) as { url?: unknown; detail?: unknown };
+            url = body.url; detail = body.detail;
+          } catch {}
+          if (xhr.status >= 200 && xhr.status < 300 && typeof url === 'string') resolve();
+          else if (xhr.status === 401) reject(new RefreshableError());
+          else if (typeof detail === 'string') reject(new Error(detail));
+          else reject(new Error(`Upload failed (${xhr.status})`));
+        };
+        xhr.onerror = () => reject(new Error('Network error during upload'));
+        xhr.send(form);
+      });
+    };
+    let tokens = await getTokens();
+    try { await send(tokens); } catch (reason) {
+      if (!(reason instanceof RefreshableError) || !tokens?.refreshToken) throw reason;
+      tokens = await refresh(); await send(tokens);
+    }
+    return api.me();
+  },
+  async getSocialLinks(userId: string): Promise<SocialLink[]> {
+    const raw = await request<Json>(`/users/${userId}/social-links`);
+    return extractItems(raw).map((r) => ({ id: String(r.id), platform: String(r.platform), username: String(r.username), url: String(r.url), sortOrder: Number(r.sort_order ?? 0) }));
+  },
+  async saveSocialLink(data: { platform: string; username: string; url: string; sortOrder?: number }): Promise<SocialLink> {
+    const r = await request<Json>('/profile/social-links', { method: 'POST', body: JSON.stringify({ platform: data.platform, username: data.username, url: data.url, sort_order: data.sortOrder ?? 0 }) });
+    return { id: String(r.id), platform: String(r.platform), username: String(r.username), url: String(r.url), sortOrder: Number(r.sort_order ?? 0) };
+  },
+  async deleteSocialLink(linkId: string): Promise<void> {
+    await request<Json>(`/profile/social-links/${linkId}`, { method: 'DELETE' });
+  },
+  async searchLocations(query: string): Promise<LocationResult[]> {
+    if (query.length < 2) return [];
+    return request<LocationResult[]>(`/locations/search?q=${encodeURIComponent(query)}`);
+  },
+  async deleteAvatar(): Promise<User> {
+    await request<Json>('/profile/avatar', { method: 'DELETE' });
+    return api.me();
+  },
+  async deleteCover(): Promise<User> {
+    await request<Json>('/profile/cover', { method: 'DELETE' });
     return api.me();
   },
   async conversations(): Promise<Conversation[]> {
@@ -375,7 +457,27 @@ export const api = {
   async uploadMedia(uri: string, name: string, type: string): Promise<Attachment> {
     const form = new FormData();
     form.append('file', { uri, name, type } as unknown as Blob);
-    return mapAttachment(await request<Json>('/media/upload', { method: 'POST', body: form }));
+    const send = async (tokens: Tokens | null): Promise<Json> => {
+      return await new Promise<Json>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API_URL}/media/upload`);
+        if (tokens?.accessToken) xhr.setRequestHeader('Authorization', `Bearer ${tokens.accessToken}`);
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) { try { resolve(JSON.parse(xhr.responseText)); } catch { reject(new Error('Bad response')); } }
+          else if (xhr.status === 401) reject(new RefreshableError());
+          else { try { const d = JSON.parse(xhr.responseText); reject(new Error(d.detail || `Upload failed (${xhr.status})`)); } catch { reject(new Error(`Upload failed (${xhr.status})`)); } }
+        };
+        xhr.onerror = () => reject(new Error('Network error during upload'));
+        xhr.send(form);
+      });
+    };
+    let tokens = await getTokens();
+    try { return mapAttachment(await send(tokens)); }
+    catch (reason) {
+      if (!(reason instanceof RefreshableError) || !tokens?.refreshToken) throw reason;
+      tokens = await refresh();
+      return mapAttachment(await send(tokens));
+    }
   },
   async saveGiphy(item: { id: string; kind: 'gif' | 'sticker'; title: string; url: string }): Promise<Attachment> {
     return mapAttachment(await request<Json>('/media/giphy', { method: 'POST', body: JSON.stringify(item) }));
@@ -585,7 +687,7 @@ export const api = {
 
   async reactPost(postId: string, emoji: string): Promise<ReactResponse> {
     const raw = await request<Json>(`/posts/${postId}/react`, { method: 'POST', body: JSON.stringify({ emoji }) });
-    return { likeCount: Number(raw.like_count ?? 0), myLikeEmoji: raw.my_like_emoji ? String(raw.my_like_emoji) : null, reactions: ((raw.reactions ?? []) as Json[]).map((r) => ({ emoji: String(r.emoji), userId: String(r.user_id) })) };
+    return { likeCount: Number(raw.like_count ?? 0), myLikeEmoji: raw.my_like_emoji ? String(raw.my_like_emoji) : null, reactions: ((raw.reactions ?? []) as Json[]).map((r) => ({ emoji: String(r.emoji), userId: String(r.user_id), displayName: String(r.display_name ?? ''), avatarUrl: r.avatar_url != null ? String(r.avatar_url) : null })) };
   },
 
   async postComments(postId: string, cursor?: string, limit = 20): Promise<CommentPage> {
@@ -668,6 +770,8 @@ export const api = {
       postCount: Number(raw.post_count ?? 0),
       isFollowing: raw.is_following === true,
       isSelf: raw.is_self === true,
+      mutualFriendCount: Number(raw.mutual_friend_count ?? 0),
+      profileViewCount: Number(raw.profile_view_count ?? 0),
     };
   },
 
@@ -676,6 +780,42 @@ export const api = {
     if (cursor) params.set('cursor', cursor);
     const raw = await request<Json>(`/users/${userId}/posts?${params}`);
     return { items: (extractItems(raw) as Json[]).map(mapPost), nextCursor: raw.next_cursor ? String(raw.next_cursor) : null };
+  },
+
+  async getUserMedia(userId: string, cursor?: string): Promise<ProfileMediaPage> {
+    const params = new URLSearchParams();
+    if (cursor) params.set('cursor', cursor);
+    const qs = params.toString() ? `?${params}` : '';
+    const raw = await request<Json>(`/users/${userId}/media${qs}`);
+    return {
+      items: ((raw.items ?? []) as Json[]).map((i) => ({ id: String(i.id), url: String(i.url), mimeType: i.mime_type ? String(i.mime_type) : null, postId: String(i.post_id), createdAt: String(i.created_at) })),
+      nextCursor: raw.next_cursor ? String(raw.next_cursor) : null,
+    };
+  },
+
+  async getUserLikes(userId: string, cursor?: string): Promise<PostPage> {
+    const params = new URLSearchParams();
+    if (cursor) params.set('cursor', cursor);
+    const qs = params.toString() ? `?${params}` : '';
+    const raw = await request<Json>(`/users/${userId}/likes${qs}`);
+    return { items: (extractItems(raw) as Json[]).map(mapPost), nextCursor: raw.next_cursor ? String(raw.next_cursor) : null };
+  },
+
+  async getUserHighlights(userId: string): Promise<StoryHighlightPage> {
+    const raw = await request<Json>(`/users/${userId}/highlights`);
+    return {
+      items: ((raw.items ?? []) as Json[]).map((i) => ({ id: String(i.id), title: String(i.title), coverUrl: i.cover_url ? String(i.cover_url) : null, sortOrder: Number(i.sort_order ?? 0), storyCount: Number(i.story_count ?? 0), createdAt: String(i.created_at) })),
+      nextCursor: raw.next_cursor ? String(raw.next_cursor) : null,
+    };
+  },
+
+  async createHighlight(userId: string, title: string, coverUrl?: string): Promise<StoryHighlight> {
+    const raw = await request<Json>(`/users/${userId}/highlights`, { method: 'POST', body: JSON.stringify({ title, cover_url: coverUrl || null }) });
+    return { id: String(raw.id), title: String(raw.title), coverUrl: raw.cover_url ? String(raw.cover_url) : null, sortOrder: Number(raw.sort_order ?? 0), storyCount: Number(raw.story_count ?? 0), createdAt: String(raw.created_at) };
+  },
+
+  async deleteHighlight(userId: string, highlightId: string): Promise<void> {
+    await request<void>(`/users/${userId}/highlights/${highlightId}`, { method: 'DELETE' });
   },
 
   async getFollowers(userId: string, cursor?: string): Promise<FollowListPage> {
@@ -694,5 +834,66 @@ export const api = {
     const raw = await request<Json>(`/users/${userId}/following${qs}`);
     const items = ((raw.items ?? []) as Json[]).map((r) => ({ ...mapUser(r), followedAt: String(r.followed_at ?? '') }));
     return { items, nextCursor: raw.next_cursor ? String(raw.next_cursor) : null };
+  },
+
+  async reactStory(storyId: string, emoji: string): Promise<StoryReactionResponse> {
+    const raw = await request<Json>(`/stories/${storyId}/react`, { method: 'POST', body: JSON.stringify({ emoji }) });
+    return {
+      emoji: String(raw.emoji ?? emoji),
+      reactionCount: Number(raw.reaction_count ?? 0),
+      myReaction: raw.my_reaction ? String(raw.my_reaction) : null,
+      reactions: ((raw.reactions ?? []) as Json[]).map((r) => ({ emoji: String(r.emoji), userId: String(r.user_id), displayName: String(r.display_name ?? ''), avatarUrl: r.avatar_url ? String(r.avatar_url) : null })),
+    };
+  },
+
+  async getStoryReactions(storyId: string): Promise<StoryReactionResponse> {
+    const raw = await request<Json>(`/stories/${storyId}/reactions`);
+    return {
+      emoji: String(raw.emoji ?? ''),
+      reactionCount: Number(raw.reaction_count ?? 0),
+      myReaction: raw.my_reaction ? String(raw.my_reaction) : null,
+      reactions: ((raw.reactions ?? []) as Json[]).map((r) => ({ emoji: String(r.emoji), userId: String(r.user_id), displayName: String(r.display_name ?? ''), avatarUrl: r.avatar_url ? String(r.avatar_url) : null })),
+    };
+  },
+
+  async replyStory(storyId: string, content: string): Promise<StoryReplyItem> {
+    const raw = await request<Json>(`/stories/${storyId}/reply`, { method: 'POST', body: JSON.stringify({ content }) });
+    return { id: String(raw.id), sender: mapUser((raw.sender ?? {}) as Json), content: raw.content ? String(raw.content) : null, createdAt: String(raw.created_at) };
+  },
+
+  async getStoryViewers(storyId: string): Promise<StoryViewerUser[]> {
+    const raw = await request<Json[]>(`/stories/${storyId}/viewers`);
+    return (Array.isArray(raw) ? raw : []).map((r: any) => ({ id: String(r.id), displayName: String(r.display_name ?? ''), avatarUrl: r.avatar_url ? String(r.avatar_url) : null, viewedAt: String(r.viewed_at) }));
+  },
+
+  async getNotificationPrefs(): Promise<NotificationPrefs> {
+    const raw = await request<Json>('/settings/notifications');
+    return { messages: !!raw.messages, calls: !!raw.calls, posts: !!raw.posts, comments: !!raw.comments, reactions: !!raw.reactions, follows: !!raw.follows, mentions: !!raw.mentions, groupActivity: !!raw.group_activity };
+  },
+
+  async updateNotificationPrefs(patch: Partial<NotificationPrefs>): Promise<NotificationPrefs> {
+    const body: Record<string, unknown> = {};
+    if (patch.messages !== undefined) body.messages = patch.messages;
+    if (patch.calls !== undefined) body.calls = patch.calls;
+    if (patch.posts !== undefined) body.posts = patch.posts;
+    if (patch.comments !== undefined) body.comments = patch.comments;
+    if (patch.reactions !== undefined) body.reactions = patch.reactions;
+    if (patch.follows !== undefined) body.follows = patch.follows;
+    if (patch.mentions !== undefined) body.mentions = patch.mentions;
+    if (patch.groupActivity !== undefined) body.group_activity = patch.groupActivity;
+    const raw = await request<Json>('/settings/notifications', { method: 'PATCH', body: JSON.stringify(body) });
+    return { messages: !!raw.messages, calls: !!raw.calls, posts: !!raw.posts, comments: !!raw.comments, reactions: !!raw.reactions, follows: !!raw.follows, mentions: !!raw.mentions, groupActivity: !!raw.group_activity };
+  },
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await request<Json>('/auth/change-password', { method: 'POST', body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) });
+  },
+
+  async changeEmail(password: string, newEmail: string): Promise<void> {
+    await request<Json>('/auth/change-email', { method: 'POST', body: JSON.stringify({ password, new_email: newEmail }) });
+  },
+
+  async submitReport(type: string, targetId: string | null, reason: string, details?: string): Promise<void> {
+    await request<Json>('/reports', { method: 'POST', body: JSON.stringify({ type, target_id: targetId, reason, details }) });
   },
 };

@@ -50,6 +50,15 @@ function Navigator() {
         <Stack.Screen name="feed/create-story" options={{ presentation: 'modal' }} />
         <Stack.Screen name="feed/profile/[id]" />
         <Stack.Screen name="feed/followers/[id]" />
+        <Stack.Screen name="settings/index" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="settings/privacy" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="settings/storage" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="settings/notifications-settings" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="settings/appearance" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="settings/account" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="settings/blocked" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="settings/report" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="settings/about" options={{ animation: 'slide_from_right' }} />
       </Stack>
       <CallListener />
       <PushListener />

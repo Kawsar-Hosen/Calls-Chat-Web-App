@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Image } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -46,6 +47,10 @@ export default function FeedScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    api.feedStories().then(setStories).catch(() => {});
+  }, [section]);
+
   const { subscribe } = useSocket();
 
   useEffect(() => {
@@ -62,7 +67,7 @@ export default function FeedScreen() {
       } else if (event.type === 'reaction.updated') {
         setPosts((prev) => prev.map((p) => {
           if (p.id !== event.postId) return p;
-          return { ...p, likeCount: event.likeCount, reactions: [...p.reactions.filter((r) => r.userId !== event.userId), { emoji: event.emoji, userId: event.userId }] };
+          return { ...p, likeCount: event.likeCount, reactions: [...p.reactions.filter((r) => r.userId !== event.userId), { emoji: event.emoji, userId: event.userId, displayName: '', avatarUrl: null }] };
         }));
       } else if (event.type === 'comment.created') {
         setPosts((prev) => prev.map((p) => p.id === event.postId ? { ...p, commentCount: p.commentCount + 1 } : p));
@@ -88,7 +93,11 @@ export default function FeedScreen() {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
         <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>{t('feed')}</Text>
+          <Image source={require('../../assets/header.png')} style={[styles.headerLogo, { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 }]} resizeMode="contain" />
+          <View style={{ flex: 1 }} />
+          <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => [styles.settingsBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
+            <MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} />
+          </Pressable>
         </View>
         <View style={{ padding: 16 }}>
           <Skeleton width="100%" height={80} radius={12} />
@@ -103,9 +112,13 @@ export default function FeedScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>{t('feed')}</Text>
-      </View>
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <Image source={require('../../assets/header.png')} style={[styles.headerLogo, { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 }]} resizeMode="contain" />
+          <View style={{ flex: 1 }} />
+          <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => [styles.settingsBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
+            <MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} />
+          </Pressable>
+        </View>
 
       <FlatList
         data={posts}
@@ -145,8 +158,9 @@ export default function FeedScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
-  headerTitle: { fontSize: 26, fontWeight: '900' },
+  header: { height: 56, paddingHorizontal: 14, paddingBottom: 2, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center' },
+  headerLogo: { width: 220, height: 56 },
+  settingsBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   sectionRow: { flexDirection: 'row', borderBottomWidth: 1 },
   sectionTab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
   sectionLabel: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },

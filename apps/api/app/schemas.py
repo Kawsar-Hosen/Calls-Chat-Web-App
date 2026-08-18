@@ -16,14 +16,29 @@ class UserPublic(ORMModel):
     display_name: str
     bio: str | None
     avatar_url: str | None
+    cover_url: str | None = None
+    custom_status: str | None = None
+    accent_color: str | None = None
+    location: str | None = None
+    website: str | None = None
+    date_of_birth: str | None = None
     is_online: bool
     last_seen_at: datetime | None
+    created_at: datetime | None = None
 
 
 class UserMe(UserPublic):
     email: str
     phone_code: str | None = None
     phone: str | None = None
+    last_seen_visible: bool = True
+    online_visible: bool = True
+    who_can_message: str = "everyone"
+    who_can_see_posts: str = "public"
+    read_receipts: bool = True
+    typing_indicator: bool = True
+    font_size: str = "default"
+    chat_wallpaper: str | None = None
     created_at: datetime
 
 
@@ -90,9 +105,23 @@ class ProfileUpdate(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=80)
     bio: str | None = Field(default=None, max_length=500)
     avatar_url: HttpUrl | None = None
+    cover_url: str | None = None
+    custom_status: str | None = Field(default=None, max_length=100)
+    accent_color: str | None = Field(default=None, max_length=9)
+    location: str | None = Field(default=None, max_length=120)
+    website: str | None = Field(default=None, max_length=200)
+    date_of_birth: str | None = Field(default=None, max_length=10)
     email: str | None = Field(default=None, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$", max_length=320)
     phone_code: str | None = Field(default=None, max_length=8)
     phone: str | None = Field(default=None, max_length=20)
+    last_seen_visible: bool | None = None
+    online_visible: bool | None = None
+    who_can_message: str | None = None
+    who_can_see_posts: str | None = None
+    read_receipts: bool | None = None
+    typing_indicator: bool | None = None
+    font_size: str | None = None
+    chat_wallpaper: str | None = None
 
 
 class FriendRequestCreate(BaseModel):
@@ -341,6 +370,8 @@ class PostMediaView(ORMModel):
 class PostReactionView(ORMModel):
     emoji: str
     user_id: str
+    display_name: str = ""
+    avatar_url: str | None = None
 
 
 class CreatePostRequest(BaseModel):
@@ -448,6 +479,34 @@ class StoryGroupView(BaseModel):
     has_unviewed: bool = False
 
 
+class StoryReactionView(BaseModel):
+    emoji: str
+    user_id: str
+    display_name: str = ""
+    avatar_url: str | None = None
+
+
+class StoryReactionResponse(BaseModel):
+    emoji: str
+    reaction_count: int
+    my_reaction: str | None = None
+    reactions: list[StoryReactionView]
+
+
+class StoryReplyView(BaseModel):
+    id: str
+    sender: UserPublic
+    content: str | None
+    created_at: datetime
+
+
+class StoryViewUser(BaseModel):
+    id: str
+    display_name: str
+    avatar_url: str | None = None
+    viewed_at: datetime
+
+
 # ── Follow ─────────────────────────────────────────────────────
 
 
@@ -473,3 +532,124 @@ class UserProfileView(BaseModel):
     post_count: int
     is_following: bool
     is_self: bool
+    mutual_friend_count: int = 0
+    profile_view_count: int = 0
+
+
+# ── Story Highlights ───────────────────────────────────────────
+
+
+class HighlightCreate(BaseModel):
+    title: str = Field(max_length=50)
+    cover_url: str | None = None
+
+
+class HighlightView(ORMModel):
+    id: str
+    title: str
+    cover_url: str | None
+    sort_order: int
+    story_count: int = 0
+    created_at: datetime
+
+
+class HighlightListPage(BaseModel):
+    items: list[HighlightView]
+    next_cursor: str | None
+
+
+# ── Profile Media ──────────────────────────────────────────────
+
+
+class ProfileMediaItem(BaseModel):
+    id: str
+    url: str
+    mime_type: str | None
+    post_id: str
+    created_at: datetime
+
+
+class ProfileMediaPage(BaseModel):
+    items: list[ProfileMediaItem]
+    next_cursor: str | None
+
+
+# ── Social Links ───────────────────────────────────────────────
+
+
+class SocialLinkCreate(BaseModel):
+    platform: str = Field(..., max_length=30)
+    username: str = Field(..., min_length=1, max_length=120)
+    url: str = Field(..., max_length=300)
+    sort_order: int = 0
+
+
+class SocialLinkView(BaseModel):
+    id: str
+    platform: str
+    username: str
+    url: str
+    sort_order: int
+
+
+class SocialLinkListPage(BaseModel):
+    items: list[SocialLinkView]
+    next_cursor: str | None = None
+
+
+# ── Location Search ────────────────────────────────────────────
+
+
+class LocationResult(BaseModel):
+    display_name: str
+    lat: float
+    lon: float
+
+
+# ── Notification Preferences ────────────────────────────────────
+
+
+class NotificationPreferenceView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    messages: bool = True
+    calls: bool = True
+    posts: bool = True
+    comments: bool = True
+    reactions: bool = True
+    follows: bool = True
+    mentions: bool = True
+    group_activity: bool = True
+
+
+class NotificationPreferenceUpdate(BaseModel):
+    messages: bool | None = None
+    calls: bool | None = None
+    posts: bool | None = None
+    comments: bool | None = None
+    reactions: bool | None = None
+    follows: bool | None = None
+    mentions: bool | None = None
+    group_activity: bool | None = None
+
+
+# ── Change Password / Email ────────────────────────────────────
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ChangeEmailRequest(BaseModel):
+    password: str
+    new_email: str
+
+
+# ── Report ─────────────────────────────────────────────────────
+
+
+class ReportRequest(BaseModel):
+    type: str
+    target_id: str | None = None
+    reason: str
+    details: str | None = None

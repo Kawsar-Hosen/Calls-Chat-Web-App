@@ -1,9 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ComponentProps, PropsWithChildren } from 'react';
-import { useEffect, useRef } from 'react';
-import { ActivityIndicator, Animated, Image, Pressable, StyleSheet, Text, TextInput, View, type DimensionValue, type TextInputProps, type ViewStyle } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Image, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View, type DimensionValue, type TextInputProps, type ViewStyle } from 'react-native';
 import { useTheme } from './theme';
 import { useI18n } from './i18n';
+import { useRouter } from 'expo-router';
 
 export function BrandMark({ size = 42 }: { size?: number }) {
   const { colors } = useTheme();
@@ -42,11 +43,13 @@ export function PrimaryButton({ title, loading, icon = 'arrow-right', onPress, d
   );
 }
 
-export function ScreenHeader({ title, eyebrow, right }: { title: string; eyebrow?: string; right?: React.ReactNode }) {
+export function ScreenHeader({ title, eyebrow, right, back }: { title: string; eyebrow?: string; right?: React.ReactNode; back?: boolean }) {
   const { colors } = useTheme();
   const { isRTL } = useI18n();
+  const router = useRouter();
   return (
     <View style={[styles.screenHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+      {back ? <Pressable onPress={() => router.back()} style={{ marginRight: 12, padding: 4 }}><MaterialCommunityIcons name={isRTL ? 'chevron-right' : 'chevron-left'} size={26} color={colors.text} /></Pressable> : null}
       <View style={{ flex: 1 }}>
         {eyebrow ? <Text style={[styles.eyebrow, { color: colors.accent, textAlign: isRTL ? 'right' : 'left' }]}>{eyebrow.toUpperCase()}</Text> : null}
         <Text style={[styles.title, { color: colors.text, textAlign: isRTL ? 'right' : 'left' }]}>{title}</Text>
@@ -94,6 +97,73 @@ export function SkeletonChat({ bubbles = 8 }: { bubbles?: number }) {
     </View>;
   })}</View>;
 }
+
+export function ConfirmSheet({ visible, title, message, icon, iconBg, iconColor, confirmLabel, confirmColor, onConfirm, onCancel, loading }: {
+  visible: boolean;
+  title: string;
+  message: string;
+  icon?: ComponentProps<typeof MaterialCommunityIcons>['name'];
+  iconBg?: string;
+  iconColor?: string;
+  confirmLabel?: string;
+  confirmColor?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  loading?: boolean;
+}) {
+  const { colors } = useTheme();
+  const scale = useRef(new Animated.Value(0.92)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 80, friction: 12 }),
+        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+    } else {
+      scale.setValue(0.92);
+      opacity.setValue(0);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={confirmStyles.backdrop}>
+        <Animated.View style={[confirmStyles.card, { backgroundColor: colors.surface, borderColor: colors.border, opacity, transform: [{ scale }] }]}>
+          <View style={[confirmStyles.iconWrap, { backgroundColor: (iconBg || colors.danger + '18') }]}>
+            <MaterialCommunityIcons name={icon || 'alert'} size={32} color={iconColor || colors.danger} />
+          </View>
+          <Text style={[confirmStyles.title, { color: colors.text }]}>{title}</Text>
+          <Text style={[confirmStyles.message, { color: colors.muted }]}>{message}</Text>
+          <View style={confirmStyles.actions}>
+            <Pressable onPress={onCancel} style={({ pressed }) => [confirmStyles.cancelBtn, { borderColor: colors.border, opacity: pressed ? 0.7 : 1 }]}>
+              <Text style={[confirmStyles.cancelText, { color: colors.text }]}>Cancel</Text>
+            </Pressable>
+            <Pressable onPress={loading ? undefined : onConfirm} style={({ pressed }) => [confirmStyles.confirmBtn, { backgroundColor: confirmColor || colors.danger, opacity: loading ? 0.6 : pressed ? 0.8 : 1 }]}>
+              {loading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={confirmStyles.confirmText}>{confirmLabel || 'Delete'}</Text>}
+            </Pressable>
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
+const confirmStyles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  card: { width: '100%', borderRadius: 24, borderWidth: 1, paddingVertical: 32, paddingHorizontal: 24, alignItems: 'center' },
+  iconWrap: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
+  title: { fontSize: 19, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
+  message: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginBottom: 28 },
+  actions: { flexDirection: 'row', gap: 12, width: '100%' },
+  cancelBtn: { flex: 1, height: 48, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  cancelText: { fontSize: 15, fontWeight: '700' },
+  confirmBtn: { flex: 1, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  confirmText: { color: '#FFF', fontSize: 15, fontWeight: '800' },
+});
 
 const styles = StyleSheet.create({
   brand: { alignItems: 'center', justifyContent: 'center' },

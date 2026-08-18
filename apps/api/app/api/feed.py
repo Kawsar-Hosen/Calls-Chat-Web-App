@@ -7,13 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.dependencies import get_current_user
 from app.models import (CommentLike, Follow, Friendship, MediaAttachment, Post, PostBookmark, PostComment, PostLike,
-                        PostMedia, PostShare, Story, StoryView, User, new_id, utcnow)
+                        PostMedia, PostShare, Story, StoryHighlight, StoryHighlightItem, StoryReaction, StoryReply, StoryView,
+                        ProfileView, User, new_id, utcnow)
 from app.schemas import (BookmarkResponse, CommentPage, CommentView, CommentReactionView,
                          CreateCommentRequest, CreatePostRequest, CreateStoryRequest,
-                         FollowListPage, FollowResponse, FollowUserView, PostPage,
-                         PostReactionView, PostView, PostMediaView, ReactRequest, ReactResponse,
-                         ShareResponse, StoryGroupView, StoryView_, UserPublic, UserProfileView)
+                         FollowListPage, FollowResponse, FollowUserView, HighlightCreate, HighlightListPage, HighlightView,
+                         PostPage, PostReactionView, PostView, PostMediaView, ProfileMediaItem, ProfileMediaPage,
+                         ReactRequest, ReactResponse, ShareResponse, StoryGroupView, StoryReactionResponse,
+                         StoryReactionView, StoryReplyView, StoryView_, StoryViewUser, UserPublic, UserProfileView)
 from app.push import push_to_users
+from app.websocket import manager
 from app.services import are_friends
 from app.storage import storage
 
@@ -32,13 +35,18 @@ async def _post_view(db: AsyncSession, post: Post, user: User) -> PostView:
     my_like = await db.scalar(select(PostLike).where(PostLike.post_id == post.id, PostLike.user_id == user.id))
     my_bm = await db.scalar(select(PostBookmark).where(PostBookmark.post_id == post.id, PostBookmark.user_id == user.id))
     my_sh = await db.scalar(select(PostShare).where(PostShare.post_id == post.id, PostShare.user_id == user.id))
+    reactor_ids = list({r.user_id for r in reactions})
+    reactor_map: dict[str, User] = {}
+    if reactor_ids:
+        rows = (await db.scalars(select(User).where(User.id.in_(reactor_ids)))).all()
+        reactor_map = {r.id: r for r in rows}
     return PostView(
         id=post.id,
         author=UserPublic.model_validate(author),
         content=post.content,
         visibility=post.visibility,
         media=[PostMediaView.model_validate(m) for m in media],
-        reactions=[PostReactionView.model_validate(r) for r in reactions],
+        reactions=[PostReactionView(emoji=r.emoji, user_id=r.user_id, display_name=reactor_map.get(r.user_id, None) and reactor_map[r.user_id].display_name, avatar_url=reactor_map.get(r.user_id, None) and reactor_map[r.user_id].avatar_url) for r in reactions],
         like_count=like_count,
         comment_count=comment_count,
         share_count=share_count,
@@ -239,10 +247,15 @@ async def react_post(
     like_count = int((await db.scalar(select(func.count(PostLike.id)).where(PostLike.post_id == post_id))) or 0)
     reactions = (await db.scalars(select(PostLike).where(PostLike.post_id == post_id))).all()
     my_like = await db.scalar(select(PostLike).where(PostLike.post_id == post_id, PostLike.user_id == user.id))
+    reactor_ids = list({r.user_id for r in reactions})
+    reactor_map: dict[str, User] = {}
+    if reactor_ids:
+        rows = (await db.scalars(select(User).where(User.id.in_(reactor_ids)))).all()
+        reactor_map = {r.id: r for r in rows}
     return ReactResponse(
         like_count=like_count,
         my_like_emoji=my_like.emoji if my_like else None,
-        reactions=[PostReactionView.model_validate(r) for r in reactions],
+        reactions=[PostReactionView(emoji=r.emoji, user_id=r.user_id, display_name=reactor_map.get(r.user_id, None) and reactor_map[r.user_id].display_name, avatar_url=reactor_map.get(r.user_id, None) and reactor_map[r.user_id].avatar_url) for r in reactions],
     )
 
 
@@ -430,16 +443,10 @@ async def get_stories(
     db: AsyncSession = Depends(get_db),
 ):
     now = utcnow()
-    # Get friend IDs
-    low = select(Friendship.user_low_id).where(or_(Friendship.user_low_id == user.id, Friendship.user_high_id == user.id))
-    high = select(Friendship.user_high_id).where(or_(Friendship.user_low_id == user.id, Friendship.user_high_id == user.id))
-    friend_ids = list((await db.scalars(low.union(high))).all())
-
-    # Include self + friends, non-expired stories
-    author_ids = [user.id] + [fid for fid in friend_ids if fid != user.id]
+    # Show ALL non-expired stories (public stories visible to everyone)
     q = (
         select(Story)
-        .where(Story.author_id.in_(author_ids), Story.expires_at > now)
+        .where(Story.expires_at > now)
         .order_by(Story.author_id, Story.created_at.desc())
     )
     stories = (await db.scalars(q)).all()
@@ -482,7 +489,7 @@ async def create_story(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    att = await db.get(PostMedia, body.media_id)
+    att = await db.get(MediaAttachment, body.media_id)
     if not att:
         raise HTTPException(status_code=404, detail="Media not found")
     now = utcnow()
@@ -499,6 +506,121 @@ async def create_story(
         content=story.content, created_at=story.created_at, expires_at=story.expires_at,
         view_count=0, my_viewed=False,
     )
+
+
+@feed.post("/stories/{story_id}/react")
+async def react_story(
+    story_id: str,
+    body: ReactRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    story = await db.get(Story, story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    existing = await db.scalar(select(StoryReaction).where(StoryReaction.story_id == story_id, StoryReaction.user_id == user.id))
+    if existing and existing.emoji == body.emoji:
+        await db.delete(existing)
+        await db.commit()
+        my_reaction = None
+    elif existing:
+        existing.emoji = body.emoji
+        await db.commit()
+        my_reaction = body.emoji
+    else:
+        db.add(StoryReaction(id=new_id(), story_id=story_id, user_id=user.id, emoji=body.emoji))
+        await db.commit()
+        my_reaction = body.emoji
+    count = int((await db.scalar(select(func.count(StoryReaction.id)).where(StoryReaction.story_id == story_id))) or 0)
+    all_reactions = (await db.scalars(select(StoryReaction).where(StoryReaction.story_id == story_id))).all()
+    rmap: dict[str, str] = {}
+    for r in all_reactions:
+        rmap[r.user_id] = r.emoji
+    rusers = list(rmap.keys())
+    ruser_map: dict[str, User] = {}
+    if rusers:
+        rows = (await db.scalars(select(User).where(User.id.in_(rusers)))).all()
+        ruser_map = {r.id: r for r in rows}
+    reaction_views = [StoryReactionView(emoji=emoji, user_id=uid, display_name=ruser_map.get(uid, None) and ruser_map[uid].display_name, avatar_url=ruser_map.get(uid, None) and ruser_map[uid].avatar_url) for uid, emoji in rmap.items()]
+    if story.author_id != user.id:
+        await manager.send_user(story.author_id, {
+            "type": "story.reacted",
+            "story_id": story_id,
+            "user_id": user.id,
+            "display_name": user.display_name,
+            "avatar_url": user.avatar_url,
+            "emoji": body.emoji,
+            "reaction_count": count,
+        })
+    return StoryReactionResponse(emoji=body.emoji, reaction_count=count, my_reaction=my_reaction, reactions=reaction_views)
+
+
+@feed.get("/stories/{story_id}/reactions")
+async def get_story_reactions(
+    story_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    story = await db.get(Story, story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    all_reactions = (await db.scalars(select(StoryReaction).where(StoryReaction.story_id == story_id))).all()
+    my_reaction_obj = await db.scalar(select(StoryReaction).where(StoryReaction.story_id == story_id, StoryReaction.user_id == user.id))
+    rmap: dict[str, str] = {}
+    for r in all_reactions:
+        rmap[r.user_id] = r.emoji
+    rusers = list(rmap.keys())
+    ruser_map: dict[str, User] = {}
+    if rusers:
+        rows = (await db.scalars(select(User).where(User.id.in_(rusers)))).all()
+        ruser_map = {r.id: r for r in rows}
+    reaction_views = [StoryReactionView(emoji=emoji, user_id=uid, display_name=ruser_map.get(uid, None) and ruser_map[uid].display_name, avatar_url=ruser_map.get(uid, None) and ruser_map[uid].avatar_url) for uid, emoji in rmap.items()]
+    return StoryReactionResponse(emoji=my_reaction_obj.emoji if my_reaction_obj else "", reaction_count=len(all_reactions), my_reaction=my_reaction_obj.emoji if my_reaction_obj else None, reactions=reaction_views)
+
+
+@feed.post("/stories/{story_id}/reply", status_code=201)
+async def reply_story(
+    story_id: str,
+    body: CreateCommentRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    story = await db.get(Story, story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    reply = StoryReply(id=new_id(), story_id=story_id, sender_id=user.id, content=body.content or None)
+    db.add(reply)
+    await db.commit()
+    await db.refresh(reply)
+    view = StoryReplyView(id=reply.id, sender=UserPublic.model_validate(user), content=reply.content, created_at=reply.created_at)
+    await manager.send_user(story.author_id, {
+        "type": "story.replied",
+        "story_id": story_id,
+        "reply": {"id": reply.id, "sender_id": user.id, "sender_name": user.display_name, "sender_avatar": user.avatar_url, "content": reply.content, "created_at": str(reply.created_at)},
+    })
+    return view
+
+
+@feed.get("/stories/{story_id}/replies")
+async def story_replies(
+    story_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    story = await db.get(Story, story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    if story.author_id != user.id:
+        raise HTTPException(status_code=403, detail="Only story owner can see replies")
+    replies = (await db.scalars(
+        select(StoryReply).where(StoryReply.story_id == story_id).order_by(StoryReply.created_at.asc())
+    )).all()
+    result = []
+    for r in replies:
+        u = await db.get(User, r.sender_id)
+        if u:
+            result.append(StoryReplyView(id=r.id, sender=UserPublic.model_validate(u), content=r.content, created_at=r.created_at))
+    return result
 
 
 @feed.delete("/stories/{story_id}")
@@ -529,6 +651,13 @@ async def view_story(
         db.add(StoryView(id=new_id(), story_id=story_id, viewer_id=user.id, viewed_at=utcnow()))
         await db.commit()
     vc = int((await db.scalar(select(func.count(StoryView.id)).where(StoryView.story_id == story_id))) or 0)
+    if story.author_id != user.id:
+        await manager.send_user(story.author_id, {
+            "type": "story.viewed",
+            "story_id": story_id,
+            "user_id": user.id,
+            "display_name": user.display_name,
+        })
     return {"view_count": vc}
 
 
@@ -539,15 +668,19 @@ async def story_viewers(
     db: AsyncSession = Depends(get_db),
 ):
     story = await db.get(Story, story_id)
-    if not story or story.author_id != user.id:
+    if not story:
         raise HTTPException(status_code=404, detail="Story not found")
-    views = (await db.scalars(select(StoryView).where(StoryView.story_id == story_id))).all()
-    viewers = []
-    for v in views:
+    if story.author_id != user.id:
+        raise HTTPException(status_code=403, detail="Only story owner can see viewers")
+    viewers = (await db.scalars(
+        select(StoryView).where(StoryView.story_id == story_id).order_by(StoryView.viewed_at.desc())
+    )).all()
+    result = []
+    for v in viewers:
         u = await db.get(User, v.viewer_id)
         if u:
-            viewers.append(UserPublic.model_validate(u))
-    return viewers
+            result.append(StoryViewUser(id=u.id, display_name=u.display_name, avatar_url=u.avatar_url, viewed_at=v.viewed_at))
+    return result
 
 
 @feed.get("/users/{user_id}/posts", response_model=PostPage)
@@ -662,8 +795,123 @@ async def user_profile(
     fgc = int((await db.scalar(select(func.count(Follow.id)).where(Follow.follower_id == user_id))) or 0)
     pc = int((await db.scalar(select(func.count(Post.id)).where(Post.author_id == user_id, Post.deleted_at.is_(None)))) or 0)
     is_following = bool(await db.scalar(select(Follow).where(Follow.follower_id == user.id, Follow.following_id == user_id)))
+
+    my_following = set((await db.scalars(select(Follow.following_id).where(Follow.follower_id == user.id))).all())
+    their_followers = set((await db.scalars(select(Follow.follower_id).where(Follow.following_id == user_id))).all())
+    mutual = len(my_following & their_followers)
+
+    pv = int((await db.scalar(select(func.count(ProfileView.id)).where(ProfileView.profile_id == user_id))) or 0)
+
     return UserProfileView(
         user=UserPublic.model_validate(target),
         follower_count=fc, following_count=fgc, post_count=pc,
         is_following=is_following, is_self=user.id == user_id,
+        mutual_friend_count=mutual, profile_view_count=pv,
     )
+
+
+@feed.get("/users/{user_id}/media", response_model=ProfileMediaPage)
+async def user_media(
+    user_id: str,
+    cursor: str | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    q = (
+        select(PostMedia, Post.created_at)
+        .join(Post, PostMedia.post_id == Post.id)
+        .where(
+            Post.author_id == user_id, Post.deleted_at.is_(None),
+            or_(PostMedia.mime_type.ilike("%video%"), PostMedia.mime_type.ilike("%image%"))
+        )
+        .order_by(Post.created_at.desc())
+        .limit(30)
+    )
+    if cursor:
+        c = await db.get(Post, cursor)
+        if c:
+            q = q.where(Post.created_at < c.created_at)
+    rows = (await db.execute(q)).all()
+    items = [ProfileMediaItem(id=pm.id, url=pm.url, mime_type=pm.mime_type, post_id=pm.post_id, created_at=ca) for pm, ca in rows]
+    return ProfileMediaPage(items=items, next_cursor=items[-1].id if len(items) == 30 else None)
+
+
+@feed.get("/users/{user_id}/likes", response_model=PostPage)
+async def user_likes(
+    user_id: str,
+    cursor: str | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    q = (
+        select(Post)
+        .join(PostLike, PostLike.post_id == Post.id)
+        .where(PostLike.user_id == user_id, Post.deleted_at.is_(None))
+        .order_by(Post.created_at.desc())
+        .limit(20)
+    )
+    if cursor:
+        c = await db.get(Post, cursor)
+        if c:
+            q = q.where(Post.created_at < c.created_at)
+    posts = (await db.scalars(q)).all()
+    items = []
+    for p in posts:
+        items.append(await _post_view(db, p, user))
+    return PostPage(items=items, next_cursor=posts[-1].id if len(posts) == 20 else None)
+
+
+@feed.get("/users/{user_id}/highlights", response_model=HighlightListPage)
+async def user_highlights(
+    user_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    highlights = (await db.scalars(
+        select(StoryHighlight)
+        .where(StoryHighlight.user_id == user_id)
+        .order_by(StoryHighlight.sort_order, StoryHighlight.created_at.desc())
+    )).all()
+    items = []
+    for h in highlights:
+        sc = int((await db.scalar(select(func.count(StoryHighlightItem.id)).where(StoryHighlightItem.highlight_id == h.id))) or 0)
+        items.append(HighlightView(id=h.id, title=h.title, cover_url=h.cover_url, sort_order=h.sort_order, story_count=sc, created_at=h.created_at))
+    return HighlightListPage(items=items, next_cursor=None)
+
+
+@feed.post("/users/{user_id}/highlights", response_model=HighlightView)
+async def create_highlight(
+    user_id: str,
+    body: HighlightCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user.id != user_id:
+        raise HTTPException(status_code=403, detail="Cannot create highlights for other users")
+    h = StoryHighlight(id=new_id(), user_id=user_id, title=body.title, cover_url=body.cover_url)
+    db.add(h)
+    await db.commit()
+    return HighlightView(id=h.id, title=h.title, cover_url=h.cover_url, sort_order=0, story_count=0, created_at=h.created_at)
+
+
+@feed.delete("/users/{user_id}/highlights/{highlight_id}")
+async def delete_highlight(
+    user_id: str,
+    highlight_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user.id != user_id:
+        raise HTTPException(status_code=403, detail="Cannot delete other users' highlights")
+    h = await db.get(StoryHighlight, highlight_id)
+    if not h or h.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Highlight not found")
+    await db.delete(h)
+    await db.commit()
+    return {"ok": True}
