@@ -44,6 +44,7 @@ function mapUser(raw: Json): User {
     isVerified: raw.is_verified === true,
     verifiedCategory: raw.verified_category ? String(raw.verified_category) : undefined,
     verifiedAt: raw.verified_at ? String(raw.verified_at) : null,
+    verifiedUntil: raw.verified_until ? String(raw.verified_until) : null,
     role: raw.role ? String(raw.role) : 'user',
     isBanned: raw.is_banned === true,
     isOnline: raw.is_online === true,
@@ -962,7 +963,7 @@ export const api = {
     const qs = params.toString();
     const raw = await request<Json[]>(`/notifications${qs ? `?${qs}` : ''}`);
     return {
-      items: raw.map((r: any) => ({ id: r.id, fromUserId: r.from_user_id, fromUserName: r.from_user_name, fromUserAvatar: r.from_user_avatar, type: r.type, targetType: r.target_type, targetId: r.target_id, body: r.body, isRead: r.is_read, createdAt: r.created_at })),
+      items: raw.map((r: any) => ({ id: r.id, fromUserId: r.from_user_id, fromUserName: r.from_user_name, fromUserAvatar: r.from_user_avatar, fromUserIsVerified: r.from_user_is_verified === true, fromUserVerifiedCategory: r.from_user_verified_category ?? null, fromUserVerifiedAt: r.from_user_verified_at ?? null, type: r.type, targetType: r.target_type, targetId: r.target_id, body: r.body, isRead: r.is_read, createdAt: r.created_at })),
       nextCursor: raw.length >= 30 ? String((raw[raw.length - 1] as any).id ?? null) : null,
     };
   },

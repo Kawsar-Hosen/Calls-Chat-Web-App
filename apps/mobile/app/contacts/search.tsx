@@ -9,6 +9,7 @@ import { soundSettings } from '@/sound-settings';
 import { playSound } from '@/sounds';
 import { useTheme } from '@/theme';
 import type { UserSearchResult } from '@/types';
+import { VerifiedBadge } from '@/components/VerifiedBadge';
 import { Avatar, SkeletonList } from '@/ui';
 
 type Mode = 'number' | 'username' | 'email';
@@ -118,7 +119,10 @@ export default function SearchPeopleScreen() {
           <Pressable key={person.id} onPress={() => openProfile(person)} style={({ pressed }) => [styles.row, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}>
             <Avatar name={person.displayName} uri={person.avatarUrl ?? null} size={46} online={person.isOnline} />
             <View style={styles.rowCopy}>
-              <Text numberOfLines={1} style={[styles.name, { color: colors.text, textAlign: isRTL ? 'right' : 'left' }]}>{person.displayName}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text numberOfLines={1} style={[styles.name, { color: colors.text, textAlign: isRTL ? 'right' : 'left' }]}>{person.displayName}</Text>
+                {person.isVerified ? <VerifiedBadge category={person.verifiedCategory ?? null} username={person.username} displayName={person.displayName} verifiedAt={person.verifiedAt ?? null} /> : null}
+              </View>
               <Text numberOfLines={1} style={[styles.handle, { color: colors.muted, textAlign: isRTL ? 'right' : 'left' }]}>@{person.username}</Text>
               {mode === 'number' && (person.phoneCode || person.phone) ? <Text numberOfLines={1} style={[styles.phone, { color: colors.accent }]}><MaterialCommunityIcons name="cellphone" size={11} color={colors.accent} /> {person.phoneCode}{person.phone}</Text> : null}
             </View>

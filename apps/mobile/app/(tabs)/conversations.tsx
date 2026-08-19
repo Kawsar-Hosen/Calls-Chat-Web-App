@@ -8,6 +8,7 @@ import { useAuth } from '@/auth';
 import { useSocket } from '@/socket';
 import { useTheme, useFont } from '@/theme';
 import type { Conversation, Message, SocketEvent, User } from '@/types';
+import { VerifiedBadge } from '@/components/VerifiedBadge';
 import { Avatar, SkeletonList } from '@/ui';
 import { useI18n } from '@/i18n';
 import { formatConversationDate } from '@/time';
@@ -199,6 +200,7 @@ export default function ConversationsScreen() {
                 <View style={styles.rowCopy}>
                   <View style={[styles.nameRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
                     <Text numberOfLines={1} style={[styles.name, unread && styles.nameUnread, { color: colors.text, textAlign: isRTL ? 'right' : 'left', fontFamily }]}>{name}</Text>
+                    {!isGroup && otherMember(item, user)?.isVerified ? <VerifiedBadge category={otherMember(item, user)?.verifiedCategory ?? null} username={otherMember(item, user)?.username ?? ''} displayName={name} verifiedAt={otherMember(item, user)?.verifiedAt ?? null} /> : null}
                     {meta.muted[item.id] ? <MaterialCommunityIcons name="bell-off-outline" size={13} color={colors.faint} /> : null}
                     {isGroup && item.group?.memberCount ? <Text style={[styles.memberCount, { color: colors.faint }]}>{item.group.memberCount} <MaterialCommunityIcons name="account-group-outline" size={11} color={colors.faint} /></Text> : null}
                   </View>

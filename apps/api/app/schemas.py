@@ -24,6 +24,8 @@ class UserPublic(ORMModel):
     date_of_birth: str | None = None
     is_verified: bool = False
     verified_category: str | None = None
+    verified_at: datetime | None = None
+    verified_until: datetime | None = None
     is_online: bool
     last_seen_at: datetime | None
     created_at: datetime | None = None
@@ -39,6 +41,7 @@ class UserMe(UserPublic):
     is_banned: bool = False
     ban_reason: str | None = None
     verified_at: datetime | None = None
+    verified_until: datetime | None = None
     banned_at: datetime | None = None
     last_seen_visible: bool = True
     online_visible: bool = True
@@ -681,6 +684,9 @@ class NotificationView(BaseModel):
     from_user_id: str | None = None
     from_user_name: str | None = None
     from_user_avatar: str | None = None
+    from_user_is_verified: bool = False
+    from_user_verified_category: str | None = None
+    from_user_verified_at: datetime | None = None
     type: str
     target_type: str | None = None
     target_id: str | None = None
@@ -814,6 +820,7 @@ class VerificationRequestView(ORMModel):
     status: str
     admin_id: str | None = None
     admin_notes: str | None = None
+    verified_until: datetime | None = None
     created_at: datetime
     updated_at: datetime | None = None
 
@@ -831,6 +838,7 @@ class VerificationRequestAdminView(ORMModel):
     status: str
     admin_id: str | None = None
     admin_notes: str | None = None
+    verified_until: datetime | None = None
     created_at: datetime
     updated_at: datetime | None = None
 
@@ -838,6 +846,7 @@ class VerificationRequestAdminView(ORMModel):
 class VerificationRequestUpdate(ORMModel):
     status: str
     admin_notes: str | None = None
+    duration_days: int | None = None
 
     @field_validator("status")
     @classmethod

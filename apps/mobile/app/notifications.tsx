@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { api } from '@/api';
 import { useTheme } from '@/theme';
 import type { AppNotification } from '@/types';
+import { VerifiedBadge } from '@/components/VerifiedBadge';
 
 const TYPE_ICONS: Record<string, { icon: string; color: string }> = {
   reaction: { icon: 'heart', color: '#EF4444' },
@@ -130,6 +131,7 @@ export default function NotificationsScreen() {
                 <View style={styles.rowInfo}>
                   <Text style={[styles.rowBody, { color: colors.text }]} numberOfLines={2}>
                     <Text style={{ fontWeight: '800' }}>{item.fromUserName ?? 'Someone'}</Text>
+                    {item.fromUserIsVerified ? <VerifiedBadge category={item.fromUserVerifiedCategory ?? null} username="" displayName={item.fromUserName ?? 'Someone'} verifiedAt={item.fromUserVerifiedAt ?? null} size={13} /> : null}
                     {' '}{item.body.replace(`${item.fromUserName} `, '').replace(item.fromUserName ?? '', '').trim()}
                   </Text>
                   <Text style={[styles.rowTime, { color: colors.faint }]}>{timeAgo(item.createdAt)}</Text>

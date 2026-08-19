@@ -490,7 +490,12 @@ async def delete_account(data: DeleteAccountRequest, user: User = Depends(get_cu
 
 
 @router.get("/profile", response_model=UserMe)
-async def profile(user: User = Depends(get_current_user)) -> User:
+async def profile(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> User:
+    if user.is_verified and user.verified_until and user.verified_until < utcnow():
+        user.is_verified = False
+        user.verified_category = None
+        await db.commit()
+        await db.refresh(user)
     return user
 
 
@@ -1250,6 +1255,9 @@ async def list_notifications(limit: int = Query(default=30, le=100), cursor: str
             id=r.id, from_user_id=r.from_user_id,
             from_user_name=fu.display_name if fu else None,
             from_user_avatar=fu.avatar_url if fu else None,
+            from_user_is_verified=fu.is_verified if fu else False,
+            from_user_verified_category=fu.verified_category if fu else None,
+            from_user_verified_at=fu.verified_at if fu else None,
             type=r.type, target_type=r.target_type, target_id=r.target_id,
             body=r.body, is_read=r.is_read, created_at=r.created_at,
         ))
@@ -1947,6 +1955,7 @@ async def admin_list_verification_requests(
             reason=r.reason, document_urls=doc_urls,
             status=r.status, admin_id=r.admin_id,
             admin_notes=r.admin_notes,
+            verified_until=r.verified_until if r.verified_until else (u.verified_until if u and u.verified_until else None),
             created_at=r.created_at, updated_at=r.updated_at,
         ))
     return {"items": items, "total": total or 0}
@@ -1978,6 +1987,7 @@ async def admin_get_verification_request(
         reason=r.reason, document_urls=doc_urls,
         status=r.status, admin_id=r.admin_id,
         admin_notes=r.admin_notes,
+        verified_until=r.verified_until if r.verified_until else (u.verified_until if u and u.verified_until else None),
         created_at=r.created_at, updated_at=r.updated_at,
     )
 
@@ -2003,11 +2013,27 @@ async def admin_update_verification_request(
             user.is_verified = True
             user.verified_category = r.category
             user.verified_at = utcnow()
+            duration = data.duration_days if data.duration_days else 365
+            user.verified_until = utcnow() + timedelta(days=duration)
+            r.verified_until = user.verified_until
+            notif = Notification(
+                user_id=r.user_id,
+                type="verification",
+                body=f"🎉 Congratulations! Your account has been verified as {r.category}. Your badge is now visible on your profile and posts.",
+            )
+            db.add(notif)
     elif data.status == "rejected":
         user = await db.get(User, r.user_id)
         if user:
             user.is_verified = False
             user.verified_category = None
+            reason_text = data.admin_notes if data.admin_notes else "No reason provided"
+            notif = Notification(
+                user_id=r.user_id,
+                type="verification",
+                body=f"Your verification request was declined. Reason: {reason_text}. You can submit a new request after 7 days.",
+            )
+            db.add(notif)
 
     await db.commit()
     return {"success": True, "status": r.status}

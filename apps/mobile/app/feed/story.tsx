@@ -9,6 +9,7 @@ import { useI18n } from '@/i18n';
 import { useSocket } from '@/socket';
 import { useTheme } from '@/theme';
 import type { SocketEvent, StoryGroup, StoryItem, StoryViewerUser } from '@/types';
+import { VerifiedBadge } from '@/components/VerifiedBadge';
 import { Avatar } from '@/ui';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -309,7 +310,10 @@ export default function StoryViewerScreen() {
         <View style={styles.authorRow}>
           <Avatar name={currentGroup.author.displayName} uri={currentGroup.author.avatarUrl} size={36} />
           <View style={styles.authorInfo}>
-            <Text style={styles.authorName}>{currentGroup.author.displayName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.authorName}>{currentGroup.author.displayName}</Text>
+              {currentGroup.author.isVerified ? <VerifiedBadge category={currentGroup.author.verifiedCategory ?? null} username={currentGroup.author.username} displayName={currentGroup.author.displayName} verifiedAt={currentGroup.author.verifiedAt ?? null} size={14} /> : null}
+            </View>
             <Text style={styles.storyTime}>{timeAgo(currentStory.createdAt)}</Text>
           </View>
         </View>

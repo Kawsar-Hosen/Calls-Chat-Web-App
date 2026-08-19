@@ -18,6 +18,7 @@ export interface User {
   isBanned?: boolean;
   banReason?: string | null;
   verifiedAt?: string | null;
+  verifiedUntil?: string | null;
   bannedAt?: string | null;
   isOnline: boolean;
   lastSeenAt: string | null;
@@ -413,6 +414,9 @@ export interface AppNotification {
   fromUserId: string | null;
   fromUserName: string | null;
   fromUserAvatar: string | null;
+  fromUserIsVerified: boolean;
+  fromUserVerifiedCategory: string | null;
+  fromUserVerifiedAt: string | null;
   type: string;
   targetType: string | null;
   targetId: string | null;

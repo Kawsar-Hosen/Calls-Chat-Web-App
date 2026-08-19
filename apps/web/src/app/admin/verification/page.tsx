@@ -61,7 +61,12 @@ export default function VerificationPage() {
               <span className={`text-xs font-bold px-2 py-1 rounded shrink-0 ${CATEGORY_COLORS[r.category] || ''}`}>{r.category}</span>
             </div>
             <p className="text-sm text-gray-600 line-clamp-2">{r.reason}</p>
-            <p className="text-xs text-gray-400 mt-2">{new Date(r.createdAt).toLocaleString()}</p>
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs text-gray-400">{new Date(r.createdAt).toLocaleString()}</p>
+              {r.verifiedUntil && r.status === 'approved' && (
+                <p className="text-xs text-green-600 font-medium">Expires: {new Date(r.verifiedUntil).toLocaleDateString()}</p>
+              )}
+            </div>
           </Link>
         ))}
         {!loading && requests.length === 0 && <p className="text-center text-gray-400 py-8">No verification requests.</p>}

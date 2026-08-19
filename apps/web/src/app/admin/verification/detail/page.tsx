@@ -20,6 +20,7 @@ export default function VerificationDetailPage() {
   const [request, setRequest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [adminNotes, setAdminNotes] = useState('');
+  const [durationDays, setDurationDays] = useState<number>(365);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -34,10 +35,13 @@ export default function VerificationDetailPage() {
   const updateStatus = async (status: string) => {
     setSaving(true);
     const t = localStorage.getItem('admin_token');
+    const body: Record<string, any> = { status };
+    if (adminNotes) body.admin_notes = adminNotes;
+    if (status === 'approved') body.duration_days = durationDays;
     const res = await fetch(`${API}/admin/verification/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
-      body: JSON.stringify({ status, admin_notes: adminNotes || undefined }),
+      body: JSON.stringify(body),
     });
     if (res.ok) setRequest((prev: any) => ({ ...prev, status }));
     setSaving(false);
@@ -86,6 +90,23 @@ export default function VerificationDetailPage() {
           <h3 className="font-bold text-sm mb-2">Admin Notes</h3>
           <textarea value={adminNotes} onChange={e => setAdminNotes(e.target.value)} placeholder="Optional notes about this decision..." className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm min-h-[80px]" rows={3} />
         </div>
+
+        {request.status === 'pending' && (
+          <div className="border-t border-gray-200 pt-4 mt-4">
+            <h3 className="font-bold text-sm mb-2">Verification Duration</h3>
+            <select value={durationDays} onChange={e => setDurationDays(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm min-h-[44px]">
+              <option value={3}>3 Days (Trial)</option>
+              <option value={30}>30 Days</option>
+              <option value={365}>1 Year (Default)</option>
+            </select>
+          </div>
+        )}
+
+        {request.verifiedUntil && (
+          <div className="border-t border-gray-200 pt-4 mt-4">
+            <p className="text-xs text-gray-500">Verified until: {new Date(request.verifiedUntil).toLocaleString()}</p>
+          </div>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-3 mt-4">
           <button onClick={() => updateStatus('approved')} disabled={saving || request.status === 'approved'} className="bg-green-500 text-white px-5 py-3 rounded-xl font-bold text-sm hover:bg-green-600 disabled:opacity-50 min-h-[44px]">Approve & Verify</button>

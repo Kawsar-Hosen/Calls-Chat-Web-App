@@ -8,6 +8,7 @@ import { api } from '@/api';
 import { useAuth } from '@/auth';
 import { useTheme } from '@/theme';
 import type { SearchResult, UserSearchResult } from '@/types';
+import { VerifiedBadge } from '@/components/VerifiedBadge';
 
 type Tab = 'people' | 'posts';
 
@@ -108,7 +109,10 @@ function PeopleRow({ item, colors, router }: { item: UserSearchResult; colors: a
         </View>
       )}
       <View style={styles.rowInfo}>
-        <Text style={[styles.rowName, { color: colors.text }]} numberOfLines={1}>{item.displayName}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={[styles.rowName, { color: colors.text }]} numberOfLines={1}>{item.displayName}</Text>
+          {item.isVerified ? <VerifiedBadge category={item.verifiedCategory ?? null} username={item.username} displayName={item.displayName} verifiedAt={item.verifiedAt ?? null} /> : null}
+        </View>
         <Text style={[styles.rowSub, { color: colors.muted }]} numberOfLines={1}>@{item.username}</Text>
       </View>
       <MaterialCommunityIcons name="chevron-right" size={20} color={colors.faint} />

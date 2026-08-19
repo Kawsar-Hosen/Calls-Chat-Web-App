@@ -16,6 +16,7 @@ import { useTheme, useFont } from '@/theme';
 import { useI18n } from '@/i18n';
 import { Avatar } from '@/ui';
 import type { PostComment } from '@/types';
+import { VerifiedBadge } from '@/components/VerifiedBadge';
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -85,7 +86,10 @@ export function CommentSheet({ visible, postId, onClose, onCommentAdded }: Comme
       <Avatar name={item.author.displayName} uri={item.author.avatarUrl} size={32} />
       <View style={styles.commentBody}>
         <View style={styles.commentHeader}>
-          <Text style={[styles.commentAuthor, { color: colors.text, fontFamily }]}>{item.author.displayName}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={[styles.commentAuthor, { color: colors.text, fontFamily }]}>{item.author.displayName}</Text>
+            {item.author.isVerified ? <VerifiedBadge category={item.author.verifiedCategory ?? null} username={item.author.username} displayName={item.author.displayName} verifiedAt={item.author.verifiedAt ?? null} /> : null}
+          </View>
           <Text style={[styles.commentTime, { color: colors.faint }]}>{timeAgo(item.createdAt)}</Text>
         </View>
         <Text style={[styles.commentContent, { color: colors.text, fontFamily }]}>{item.content}</Text>

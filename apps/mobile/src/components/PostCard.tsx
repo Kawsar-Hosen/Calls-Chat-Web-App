@@ -135,7 +135,7 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
           <Avatar name={post.author.displayName} uri={post.author.avatarUrl} size={40} online={post.author.isOnline} />
         </Pressable>
         <View style={styles.headerInfo}>
-          <Pressable onPress={() => router.push({ pathname: '/feed/profile/[id]' as any, params: { id: post.author.id } })}>
+          <Pressable onPress={() => router.push({ pathname: '/feed/profile/[id]' as any, params: { id: post.author.id } })} style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text style={[styles.authorName, { color: colors.text, fontFamily }]}>{post.author.displayName}</Text>
             {post.author.isVerified ? <VerifiedBadge category={post.author.verifiedCategory ?? null} username={post.author.username} displayName={post.author.displayName} verifiedAt={post.author.verifiedAt ?? null} /> : null}
           </Pressable>

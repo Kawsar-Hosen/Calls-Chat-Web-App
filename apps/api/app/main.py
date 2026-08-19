@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from app.api.routes import router, public, admin
 from app.api.feed import feed
 from app.config import settings
+from app.db import engine
 from app.emoji import router as emoji_router
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
@@ -16,3 +18,10 @@ app.include_router(admin, prefix="/api/v1")
 app.include_router(feed, prefix="/api/v1")
 app.include_router(emoji_router, prefix="/api/v1")
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir, check_dir=False), name="uploads")
+
+
+@app.on_event("startup")
+async def _run_migrations():
+    async with engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verified_until TIMESTAMPTZ"))
+        await conn.execute(text("ALTER TABLE verification_requests ADD COLUMN IF NOT EXISTS verified_until TIMESTAMPTZ"))
