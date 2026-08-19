@@ -12,7 +12,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.xyteee.app",
       "icon": "./assets/icon.png",
-      "bitcode": false
+      "bitcode": false,
+      "associatedDomains": ["applinks:xyteee.com"]
     },
     "android": {
       "package": "com.xyteee.app",
@@ -21,6 +22,18 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [{ "scheme": "https", "host": "xyteee.com", "pathPrefix": "/@" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        },
+        {
+          "action": "VIEW",
+          "data": [{ "scheme": "https", "host": "xyteee.com", "pathPrefix": "/blog" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",

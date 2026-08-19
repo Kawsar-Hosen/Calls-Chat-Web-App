@@ -63,3 +63,11 @@ async def websocket_user(websocket: WebSocket, token: str) -> tuple[User, AsyncS
     except Exception:
         await db.close()
         raise
+
+
+async def get_admin_user(user: User = Depends(get_current_user)) -> User:
+    if user.role not in ("super_admin", "admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if user.is_banned:
+        raise HTTPException(status_code=403, detail="Account is banned")
+    return user

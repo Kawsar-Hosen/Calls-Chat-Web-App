@@ -12,6 +12,12 @@ export interface User {
   website?: string | null;
   dateOfBirth?: string | null;
   gender?: string | null;
+  isVerified?: boolean;
+  role?: string;
+  isBanned?: boolean;
+  banReason?: string | null;
+  verifiedAt?: string | null;
+  bannedAt?: string | null;
   isOnline: boolean;
   lastSeenAt: string | null;
   lastSeenVisible?: boolean;

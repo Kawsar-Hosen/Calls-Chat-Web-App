@@ -22,6 +22,7 @@ class UserPublic(ORMModel):
     location: str | None = None
     website: str | None = None
     date_of_birth: str | None = None
+    is_verified: bool = False
     is_online: bool
     last_seen_at: datetime | None
     created_at: datetime | None = None
@@ -32,6 +33,12 @@ class UserMe(UserPublic):
     phone_code: str | None = None
     phone: str | None = None
     facebook_id: str | None = None
+    role: str = "user"
+    is_verified: bool = False
+    is_banned: bool = False
+    ban_reason: str | None = None
+    verified_at: datetime | None = None
+    banned_at: datetime | None = None
     last_seen_visible: bool = True
     online_visible: bool = True
     who_can_message: str = "everyone"
@@ -678,4 +685,102 @@ class NotificationView(BaseModel):
     target_id: str | None = None
     body: str
     is_read: bool
+    created_at: datetime
+
+
+# ── Admin ──────────────────────────────────────────────────────
+
+
+class AdminUserUpdate(BaseModel):
+    role: str | None = None
+    is_verified: bool | None = None
+    is_banned: bool | None = None
+    ban_reason: str | None = None
+
+
+class AdminReportUpdate(BaseModel):
+    status: str
+    action_taken: str | None = None
+    resolution_notes: str | None = None
+
+
+class AdminStats(BaseModel):
+    total_users: int
+    total_posts: int
+    total_reports: int
+    pending_reports: int
+    total_blog_posts: int
+    new_users_today: int
+    active_users_today: int
+
+
+# ── Blog ───────────────────────────────────────────────────────
+
+
+class BlogPostCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1)
+    excerpt: str | None = Field(default=None, max_length=500)
+    cover_image_url: str | None = None
+    category: str = "general"
+    status: str = "draft"
+
+
+class BlogPostUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    content: str | None = None
+    excerpt: str | None = Field(default=None, max_length=500)
+    cover_image_url: str | None = None
+    category: str | None = None
+    status: str | None = None
+
+
+class BlogPostView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    title: str
+    slug: str
+    content: str
+    excerpt: str | None = None
+    cover_image_url: str | None = None
+    category: str
+    status: str
+    author_id: str
+    author_name: str | None = None
+    author_avatar: str | None = None
+    published_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime | None = None
+
+
+# ── Public ─────────────────────────────────────────────────────
+
+
+class PublicProfile(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    username: str
+    display_name: str
+    bio: str | None = None
+    avatar_url: str | None = None
+    cover_url: str | None = None
+    custom_status: str | None = None
+    accent_color: str | None = None
+    location: str | None = None
+    website: str | None = None
+    is_verified: bool = False
+    created_at: datetime | None = None
+    follower_count: int = 0
+    following_count: int = 0
+    post_count: int = 0
+
+
+class PublicPost(BaseModel):
+    id: str
+    author: UserPublic
+    content: str | None = None
+    media: list[PostMediaView] = []
+    like_count: int = 0
+    comment_count: int = 0
+    share_count: int = 0
     created_at: datetime

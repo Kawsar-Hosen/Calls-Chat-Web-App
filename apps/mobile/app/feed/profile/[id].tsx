@@ -170,7 +170,10 @@ export default function UserProfileScreen() {
 
             {/* Profile info card */}
             <View style={[styles.infoCard, { backgroundColor: colors.background }]}>
-              <Text style={[styles.displayName, { color: colors.text, fontFamily }]}>{u.displayName}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={[styles.displayName, { color: colors.text, fontFamily }]}>{u.displayName}</Text>
+                {u.isVerified ? <MaterialCommunityIcons name="check-decagram" size={20} color="#1F66FF" /> : null}
+              </View>
               <Text style={[styles.username, { color: colors.muted, fontFamily }]}>@{u.username}</Text>
 
               {u.customStatus ? (

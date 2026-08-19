@@ -43,10 +43,19 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     facebook_app_id: str = ""
     facebook_client_secret: str = ""
+    admin_emails: list[str] = Field(default_factory=lambda: ["smdkawsar2@gmail.com"])
+    web_url: str = "https://xyteee.com"
 
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_origins(cls, value: object) -> object:
+        if isinstance(value, str) and not value.startswith("["):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return value
+
+    @field_validator("admin_emails", mode="before")
+    @classmethod
+    def parse_admin_emails(cls, value: object) -> object:
         if isinstance(value, str) and not value.startswith("["):
             return [part.strip() for part in value.split(",") if part.strip()]
         return value

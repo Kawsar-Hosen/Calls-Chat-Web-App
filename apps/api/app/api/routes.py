@@ -16,12 +16,12 @@ from app.auth import (create_access_token, create_refresh_token, decode_token, h
                       token_digest, verify_password)
 from app.config import settings
 from app.db import get_db
-from app.dependencies import get_current_session, get_current_user, websocket_user
+from app.dependencies import get_current_session, get_current_user, get_admin_user, websocket_user
 from app.email import generate_deletion_code, mask_email, render_deletion_email, render_password_reset_email, send_email
 from app.models import (AccountDeletion, AuthSession, Block, CallOffer, Conversation, ConversationMember, Device,
-                        FriendRequest, Friendship, Group, GroupApplication, GroupMember, MediaAttachment,
+                        Follow, FriendRequest, Friendship, Group, GroupApplication, GroupMember, MediaAttachment,
                          Message, MessageRead, Notification, NotificationPreference, PasswordReset, Post, PostBookmark, PostComment, PostLike,
-                        PostMedia, PostShare, Reaction, Report, SocialLink, Story, StoryView, TelegramCode, User, CommentLike, new_id, utcnow)
+                         PostMedia, PostShare, Reaction, Report, SocialLink, Story, StoryView, TelegramCode, User, CommentLike, BlogPost, new_id, utcnow)
 from app.push import push_to_users
 from app.rate_limit import auth_rate_limit
 from app.schemas import *
@@ -110,7 +110,8 @@ async def register(data: RegisterRequest, request: Request, db: AsyncSession = D
     if await db.scalar(select(User.id).where(or_(User.email == data.email.lower(), User.username == data.username))):
         raise HTTPException(409, "Email or username already exists")
     user = User(email=data.email.lower(), username=data.username, display_name=data.display_name,
-                password_hash=hash_password(data.password), date_of_birth=data.date_of_birth, gender=data.gender)
+                password_hash=hash_password(data.password), date_of_birth=data.date_of_birth, gender=data.gender,
+                role="super_admin" if data.email.lower() in [e.lower() for e in settings.admin_emails] else "user")
     db.add(user)
     await db.flush()
     tokens = await issue_tokens(db, user, data.device_name, request)
@@ -1418,3 +1419,414 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
             await manager.send_users(list(manager.connections), {"type": "presence.updated", "user_id": user.id, "is_online": False, "last_seen_at": user.last_seen_at.isoformat()}, exclude=user.id)
     finally:
         await db.close()
+
+
+# ══════════════════════════════════════════════════════════════
+#  PUBLIC ENDPOINTS (No auth required)
+# ══════════════════════════════════════════════════════════════
+
+public = APIRouter()
+
+
+@public.get("/public/users/{username}", response_model=PublicProfile)
+async def public_profile(username: str, db: AsyncSession = Depends(get_db)):
+    user = await db.scalar(select(User).where(User.username == username, User.is_banned == False))
+    if not user:
+        raise HTTPException(404, "User not found")
+    follower = await db.scalar(select(func.count()).select_from(Follow).where(Follow.following_id == user.id))
+    following = await db.scalar(select(func.count()).select_from(Follow).where(Follow.follower_id == user.id))
+    posts = await db.scalar(select(func.count()).select_from(Post).where(Post.author_id == user.id, Post.deleted_at.is_(None), Post.visibility == "public"))
+    return PublicProfile(
+        id=user.id, username=user.username, display_name=user.display_name,
+        bio=user.bio, avatar_url=user.avatar_url, cover_url=user.cover_url,
+        custom_status=user.custom_status, accent_color=user.accent_color,
+        location=user.location, website=user.website, is_verified=user.is_verified,
+        created_at=user.created_at, follower_count=follower or 0,
+        following_count=following or 0, post_count=posts or 0,
+    )
+
+
+@public.get("/public/users/{username}/posts")
+async def public_user_posts(username: str, limit: int = Query(20, ge=1, le=50), db: AsyncSession = Depends(get_db)):
+    user = await db.scalar(select(User).where(User.username == username, User.is_banned == False))
+    if not user:
+        raise HTTPException(404, "User not found")
+    rows = (await db.execute(
+        select(Post).where(Post.author_id == user.id, Post.deleted_at.is_(None), Post.visibility == "public")
+        .order_by(Post.created_at.desc()).limit(limit)
+    )).scalars().all()
+    items = []
+    for p in rows:
+        media = (await db.execute(select(PostMedia).where(PostMedia.post_id == p.id).order_by(PostMedia.sort_order))).scalars().all()
+        likes = await db.scalar(select(func.count()).select_from(PostLike).where(PostLike.post_id == p.id))
+        comments = await db.scalar(select(func.count()).select_from(PostComment).where(PostComment.post_id == p.id, PostComment.deleted_at.is_(None)))
+        shares = await db.scalar(select(func.count()).select_from(PostShare).where(PostShare.post_id == p.id))
+        items.append(PublicPost(
+            id=p.id, author=UserPublic.model_validate(user), content=p.content,
+            media=[PostMediaView.model_validate(m) for m in media],
+            like_count=likes or 0, comment_count=comments or 0, share_count=shares or 0,
+            created_at=p.created_at,
+        ))
+    return {"items": items}
+
+
+@public.get("/public/posts/{post_id}")
+async def public_post(post_id: str, db: AsyncSession = Depends(get_db)):
+    post = await db.scalar(select(Post).where(Post.id == post_id, Post.deleted_at.is_(None), Post.visibility == "public"))
+    if not post:
+        raise HTTPException(404, "Post not found")
+    author = await db.get(User, post.author_id)
+    if not author or author.is_banned:
+        raise HTTPException(404, "Post not found")
+    media = (await db.execute(select(PostMedia).where(PostMedia.post_id == post.id).order_by(PostMedia.sort_order))).scalars().all()
+    likes = await db.scalar(select(func.count()).select_from(PostLike).where(PostLike.post_id == post.id))
+    comments = await db.scalar(select(func.count()).select_from(PostComment).where(PostComment.post_id == post.id, PostComment.deleted_at.is_(None)))
+    shares = await db.scalar(select(func.count()).select_from(PostShare).where(PostShare.post_id == post.id))
+    return PublicPost(
+        id=post.id, author=UserPublic.model_validate(author), content=post.content,
+        media=[PostMediaView.model_validate(m) for m in media],
+        like_count=likes or 0, comment_count=comments or 0, share_count=shares or 0,
+        created_at=post.created_at,
+    )
+
+
+@public.get("/public/blog")
+async def public_blog_list(limit: int = Query(20, ge=1, le=50), category: str | None = None, db: AsyncSession = Depends(get_db)):
+    q = select(BlogPost).where(BlogPost.status == "published")
+    if category:
+        q = q.where(BlogPost.category == category)
+    q = q.order_by(BlogPost.published_at.desc()).limit(limit)
+    rows = (await db.execute(q)).scalars().all()
+    items = []
+    for b in rows:
+        author = await db.get(User, b.author_id)
+        items.append(BlogPostView(
+            id=b.id, title=b.title, slug=b.slug, content=b.content,
+            excerpt=b.excerpt, cover_image_url=b.cover_image_url,
+            category=b.category, status=b.status, author_id=b.author_id,
+            author_name=author.display_name if author else None,
+            author_avatar=author.avatar_url if author else None,
+            published_at=b.published_at, created_at=b.created_at, updated_at=b.updated_at,
+        ))
+    return {"items": items}
+
+
+@public.get("/public/blog/{slug}", response_model=BlogPostView)
+async def public_blog_post(slug: str, db: AsyncSession = Depends(get_db)):
+    b = await db.scalar(select(BlogPost).where(BlogPost.slug == slug, BlogPost.status == "published"))
+    if not b:
+        raise HTTPException(404, "Blog post not found")
+    author = await db.get(User, b.author_id)
+    return BlogPostView(
+        id=b.id, title=b.title, slug=b.slug, content=b.content,
+        excerpt=b.excerpt, cover_image_url=b.cover_image_url,
+        category=b.category, status=b.status, author_id=b.author_id,
+        author_name=author.display_name if author else None,
+        author_avatar=author.avatar_url if author else None,
+        published_at=b.published_at, created_at=b.created_at, updated_at=b.updated_at,
+    )
+
+
+# ══════════════════════════════════════════════════════════════
+#  ADMIN ENDPOINTS (Admin auth required)
+# ══════════════════════════════════════════════════════════════
+
+admin = APIRouter()
+
+
+@admin.get("/admin/stats", response_model=AdminStats)
+async def admin_stats(admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    now = utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    total_users = await db.scalar(select(func.count()).select_from(User))
+    total_posts = await db.scalar(select(func.count()).select_from(Post).where(Post.deleted_at.is_(None)))
+    total_reports = await db.scalar(select(func.count()).select_from(Report))
+    pending_reports = await db.scalar(select(func.count()).select_from(Report).where(Report.status == "pending"))
+    total_blog = await db.scalar(select(func.count()).select_from(BlogPost))
+    new_today = await db.scalar(select(func.count()).select_from(User).where(User.created_at >= today_start))
+    active_today = await db.scalar(select(func.count()).select_from(User).where(User.is_online == True))
+    return AdminStats(
+        total_users=total_users or 0, total_posts=total_posts or 0,
+        total_reports=total_reports or 0, pending_reports=pending_reports or 0,
+        total_blog_posts=total_blog or 0, new_users_today=new_today or 0,
+        active_users_today=active_today or 0,
+    )
+
+
+@admin.get("/admin/users")
+async def admin_list_users(
+    q: str | None = None, role: str | None = None, banned: bool | None = None,
+    limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0),
+    admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db),
+):
+    query = select(User)
+    count_q = select(func.count()).select_from(User)
+    if q:
+        like = f"%{q}%"
+        query = query.where(or_(User.username.ilike(like), User.display_name.ilike(like), User.email.ilike(like)))
+        count_q = count_q.where(or_(User.username.ilike(like), User.display_name.ilike(like), User.email.ilike(like)))
+    if role:
+        query = query.where(User.role == role)
+        count_q = count_q.where(User.role == role)
+    if banned is not None:
+        query = query.where(User.is_banned == banned)
+        count_q = count_q.where(User.is_banned == banned)
+    total = await db.scalar(count_q)
+    users = (await db.execute(query.order_by(User.created_at.desc()).limit(limit).offset(offset))).scalars().all()
+    return {"items": [UserMe.model_validate(u) for u in users], "total": total or 0}
+
+
+@admin.get("/admin/users/{user_id}", response_model=UserMe)
+async def admin_get_user(user_id: str, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+    return user
+
+
+@admin.patch("/admin/users/{user_id}", response_model=UserMe)
+async def admin_update_user(user_id: str, data: AdminUserUpdate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+    if data.role is not None:
+        if data.role not in ("user", "moderator", "admin", "super_admin"):
+            raise HTTPException(400, "Invalid role")
+        user.role = data.role
+    if data.is_verified is not None:
+        user.is_verified = data.is_verified
+        user.verified_at = utcnow() if data.is_verified else None
+    if data.is_banned is not None:
+        user.is_banned = data.is_banned
+        user.banned_at = utcnow() if data.is_banned else None
+    if data.ban_reason is not None:
+        user.ban_reason = data.ban_reason
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@admin.delete("/admin/users/{user_id}")
+async def admin_delete_user(user_id: str, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+    if user.id == admin_user.id:
+        raise HTTPException(400, "Cannot delete yourself")
+    if user.role == "super_admin":
+        raise HTTPException(400, "Cannot delete super admin")
+    await db.delete(user)
+    await db.commit()
+    return {"success": True}
+
+
+@admin.get("/admin/reports")
+async def admin_list_reports(
+    status: str | None = None, type: str | None = None,
+    limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0),
+    admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db),
+):
+    query = select(Report)
+    count_q = select(func.count()).select_from(Report)
+    if status:
+        query = query.where(Report.status == status)
+        count_q = count_q.where(Report.status == status)
+    if type:
+        query = query.where(Report.type == type)
+        count_q = count_q.where(Report.type == type)
+    total = await db.scalar(count_q)
+    reports = (await db.execute(query.order_by(Report.created_at.desc()).limit(limit).offset(offset))).scalars().all()
+    items = []
+    for r in reports:
+        reporter = await db.get(User, r.reporter_id)
+        items.append({
+            "id": r.id, "reporter_id": r.reporter_id,
+            "reporter_name": reporter.display_name if reporter else None,
+            "reporter_avatar": reporter.avatar_url if reporter else None,
+            "type": r.type, "target_id": r.target_id, "reason": r.reason,
+            "details": r.details, "status": r.status,
+            "action_taken": r.action_taken, "resolution_notes": r.resolution_notes,
+            "created_at": r.created_at.isoformat(),
+        })
+    return {"items": items, "total": total or 0}
+
+
+@admin.get("/admin/reports/{report_id}")
+async def admin_get_report(report_id: str, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    r = await db.get(Report, report_id)
+    if not r:
+        raise HTTPException(404, "Report not found")
+    reporter = await db.get(User, r.reporter_id)
+    return {
+        "id": r.id, "reporter_id": r.reporter_id,
+        "reporter_name": reporter.display_name if reporter else None,
+        "reporter_avatar": reporter.avatar_url if reporter else None,
+        "type": r.type, "target_id": r.target_id, "reason": r.reason,
+        "details": r.details, "status": r.status,
+        "action_taken": r.action_taken, "resolution_notes": r.resolution_notes,
+        "created_at": r.created_at.isoformat(),
+    }
+
+
+@admin.patch("/admin/reports/{report_id}")
+async def admin_update_report(report_id: str, data: AdminReportUpdate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    r = await db.get(Report, report_id)
+    if not r:
+        raise HTTPException(404, "Report not found")
+    if data.status not in ("pending", "reviewed", "resolved", "dismissed"):
+        raise HTTPException(400, "Invalid status")
+    r.status = data.status
+    r.action_taken = data.action_taken
+    r.resolution_notes = data.resolution_notes
+    r.reviewed_by = admin_user.id
+    r.reviewed_at = utcnow()
+    await db.commit()
+    return {"success": True}
+
+
+@admin.get("/admin/posts")
+async def admin_list_posts(
+    q: str | None = None, limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0),
+    admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db),
+):
+    query = select(Post).where(Post.deleted_at.is_(None))
+    count_q = select(func.count()).select_from(Post).where(Post.deleted_at.is_(None))
+    if q:
+        like = f"%{q}%"
+        query = query.where(Post.content.ilike(like))
+        count_q = count_q.where(Post.content.ilike(like))
+    total = await db.scalar(count_q)
+    rows = (await db.execute(query.order_by(Post.created_at.desc()).limit(limit).offset(offset))).scalars().all()
+    items = []
+    for p in rows:
+        author = await db.get(User, p.author_id)
+        items.append({
+            "id": p.id, "content": p.content, "visibility": p.visibility,
+            "author_id": p.author_id, "author_name": author.display_name if author else None,
+            "author_username": author.username if author else None,
+            "created_at": p.created_at.isoformat(),
+        })
+    return {"items": items, "total": total or 0}
+
+
+@admin.delete("/admin/posts/{post_id}")
+async def admin_delete_post(post_id: str, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    post = await db.get(Post, post_id)
+    if not post:
+        raise HTTPException(404, "Post not found")
+    post.deleted_at = utcnow()
+    await db.commit()
+    return {"success": True}
+
+
+@admin.get("/admin/blog")
+async def admin_list_blog(
+    status: str | None = None, limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0),
+    admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db),
+):
+    query = select(BlogPost)
+    count_q = select(func.count()).select_from(BlogPost)
+    if status:
+        query = query.where(BlogPost.status == status)
+        count_q = count_q.where(BlogPost.status == status)
+    total = await db.scalar(count_q)
+    rows = (await db.execute(query.order_by(BlogPost.created_at.desc()).limit(limit).offset(offset))).scalars().all()
+    items = []
+    for b in rows:
+        author = await db.get(User, b.author_id)
+        items.append(BlogPostView(
+            id=b.id, title=b.title, slug=b.slug, content=b.content,
+            excerpt=b.excerpt, cover_image_url=b.cover_image_url,
+            category=b.category, status=b.status, author_id=b.author_id,
+            author_name=author.display_name if author else None,
+            author_avatar=author.avatar_url if author else None,
+            published_at=b.published_at, created_at=b.created_at, updated_at=b.updated_at,
+        ))
+    return {"items": [i.model_dump() for i in items], "total": total or 0}
+
+
+@admin.post("/admin/blog", response_model=BlogPostView, status_code=201)
+async def admin_create_blog(data: BlogPostCreate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    slug = data.title.lower().replace(" ", "-")
+    slug = "".join(c for c in slug if c.isalnum() or c == "-")[:100]
+    existing = await db.scalar(select(BlogPost.id).where(BlogPost.slug == slug))
+    if existing:
+        slug = f"{slug}-{secrets.token_hex(3)}"
+    published_at = utcnow() if data.status == "published" else None
+    b = BlogPost(
+        title=data.title, slug=slug, content=data.content,
+        excerpt=data.excerpt, cover_image_url=data.cover_image_url,
+        category=data.category, status=data.status,
+        author_id=admin_user.id, published_at=published_at,
+    )
+    db.add(b)
+    await db.commit()
+    await db.refresh(b)
+    return BlogPostView(
+        id=b.id, title=b.title, slug=b.slug, content=b.content,
+        excerpt=b.excerpt, cover_image_url=b.cover_image_url,
+        category=b.category, status=b.status, author_id=b.author_id,
+        author_name=admin_user.display_name, author_avatar=admin_user.avatar_url,
+        published_at=b.published_at, created_at=b.created_at, updated_at=b.updated_at,
+    )
+
+
+@admin.get("/admin/blog/{blog_id}", response_model=BlogPostView)
+async def admin_get_blog(blog_id: str, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    b = await db.get(BlogPost, blog_id)
+    if not b:
+        raise HTTPException(404, "Blog post not found")
+    author = await db.get(User, b.author_id)
+    return BlogPostView(
+        id=b.id, title=b.title, slug=b.slug, content=b.content,
+        excerpt=b.excerpt, cover_image_url=b.cover_image_url,
+        category=b.category, status=b.status, author_id=b.author_id,
+        author_name=author.display_name if author else None,
+        author_avatar=author.avatar_url if author else None,
+        published_at=b.published_at, created_at=b.created_at, updated_at=b.updated_at,
+    )
+
+
+@admin.patch("/admin/blog/{blog_id}", response_model=BlogPostView)
+async def admin_update_blog(blog_id: str, data: BlogPostUpdate, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    b = await db.get(BlogPost, blog_id)
+    if not b:
+        raise HTTPException(404, "Blog post not found")
+    if data.title is not None:
+        b.title = data.title
+        slug = data.title.lower().replace(" ", "-")
+        slug = "".join(c for c in slug if c.isalnum() or c == "-")[:100]
+        existing = await db.scalar(select(BlogPost.id).where(BlogPost.slug == slug, BlogPost.id != blog_id))
+        if existing:
+            slug = f"{slug}-{secrets.token_hex(3)}"
+        b.slug = slug
+    if data.content is not None: b.content = data.content
+    if data.excerpt is not None: b.excerpt = data.excerpt
+    if data.cover_image_url is not None: b.cover_image_url = data.cover_image_url
+    if data.category is not None: b.category = data.category
+    if data.status is not None:
+        b.status = data.status
+        if data.status == "published" and not b.published_at:
+            b.published_at = utcnow()
+    b.updated_at = utcnow()
+    await db.commit()
+    await db.refresh(b)
+    author = await db.get(User, b.author_id)
+    return BlogPostView(
+        id=b.id, title=b.title, slug=b.slug, content=b.content,
+        excerpt=b.excerpt, cover_image_url=b.cover_image_url,
+        category=b.category, status=b.status, author_id=b.author_id,
+        author_name=author.display_name if author else None,
+        author_avatar=author.avatar_url if author else None,
+        published_at=b.published_at, created_at=b.created_at, updated_at=b.updated_at,
+    )
+
+
+@admin.delete("/admin/blog/{blog_id}")
+async def admin_delete_blog(blog_id: str, admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    b = await db.get(BlogPost, blog_id)
+    if not b:
+        raise HTTPException(404, "Blog post not found")
+    await db.delete(b)
+    await db.commit()
+    return {"success": True}

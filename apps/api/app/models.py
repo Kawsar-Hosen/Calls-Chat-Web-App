@@ -34,6 +34,12 @@ class User(Base):
     phone: Mapped[str | None] = mapped_column(String(20))
     facebook_id: Mapped[str | None] = mapped_column(String(30), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(20), default="user", index=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_banned: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    ban_reason: Mapped[str | None] = mapped_column(String(500))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_online: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen_visible: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -419,7 +425,32 @@ class Report(Base):
     target_id: Mapped[str | None] = mapped_column(String(36))
     reason: Mapped[str] = mapped_column(String(500))
     details: Mapped[str | None] = mapped_column(String(2000))
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    action_taken: Mapped[str | None] = mapped_column(String(200))
+    resolution_notes: Mapped[str | None] = mapped_column(String(1000))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class BlogPost(Base):
+    __tablename__ = "blog_posts"
+    __table_args__ = (
+        Index("ix_blog_slug", "slug", unique=True),
+        Index("ix_blog_status_published", "status", "published_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    title: Mapped[str] = mapped_column(String(200))
+    slug: Mapped[str] = mapped_column(String(200), unique=True)
+    content: Mapped[str] = mapped_column(Text)
+    excerpt: Mapped[str | None] = mapped_column(String(500))
+    cover_image_url: Mapped[str | None] = mapped_column(String(2048))
+    category: Mapped[str] = mapped_column(String(50), default="general")
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Notification(Base):

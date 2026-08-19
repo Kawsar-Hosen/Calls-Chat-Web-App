@@ -143,7 +143,10 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.infoSection}>
-          <Text style={[styles.name, { color: colors.text, fontFamily }]}>{user.displayName}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Text style={[styles.name, { color: colors.text, fontFamily }]}>{user.displayName}</Text>
+            {user.isVerified ? <MaterialCommunityIcons name="check-decagram" size={20} color="#1F66FF" /> : null}
+          </View>
           <Text style={[styles.username, { color: colors.muted, fontFamily }]}>@{user.username}</Text>
 
           {user.customStatus ? (
