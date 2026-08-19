@@ -85,6 +85,7 @@ export default function SettingsScreen() {
         <Text style={[styles.section, alignment, { color: colors.muted }]}>PRIVACY & ACCOUNT</Text>
         <View style={[styles.group, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <SettingRow icon="shield-lock-outline" title="Privacy" detail="Who can see your info" onPress={() => router.push('/settings/privacy')} rtl={isRTL} />
+          <SettingRow icon="check-decagram" title="Verified Badge" detail={user.isVerified ? '✓ Verified' : 'Not verified'} active={!!user.isVerified} onPress={() => router.push('/settings/verified')} rtl={isRTL} />
           <SettingRow icon="bell-badge-outline" title="Notifications" detail="Manage alerts" onPress={() => router.push('/settings/notifications-settings')} rtl={isRTL} />
           <SettingRow icon="key-outline" title="Account" detail="Password, email" onPress={() => router.push('/settings/account')} rtl={isRTL} />
           <SettingRow icon="account-off-outline" title="Blocked Users" detail="Manage blocked accounts" onPress={() => router.push('/settings/blocked')} rtl={isRTL} />

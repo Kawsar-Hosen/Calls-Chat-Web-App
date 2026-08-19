@@ -173,7 +173,7 @@ export default function UserProfileScreen() {
             <View style={[styles.infoCard, { backgroundColor: colors.background }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={[styles.displayName, { color: colors.text, fontFamily }]}>{u.displayName}</Text>
-                {u.isVerified ? <VerifiedBadge category={u.verifiedCategory} size={20} /> : null}
+                {u.isVerified ? <VerifiedBadge category={u.verifiedCategory ?? null} size={20} username={u.username} displayName={u.displayName} verifiedAt={u.verifiedAt ?? null} /> : null}
               </View>
               <Text style={[styles.username, { color: colors.muted, fontFamily }]}>@{u.username}</Text>
 

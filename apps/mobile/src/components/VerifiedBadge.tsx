@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { VerificationBadgeSheet } from '@/components/VerificationBadgeSheet';
 
-const CATEGORY_COLORS: Record<string, string> = {
+export const CATEGORY_COLORS: Record<string, string> = {
   business: '#1F66FF',
   personal: '#34C759',
   government: '#FFB800',
@@ -12,17 +13,48 @@ const CATEGORY_COLORS: Record<string, string> = {
   other: '#8E8E93',
 };
 
-export function VerifiedBadge({ category, size = 16 }: { category?: string | null; size?: number }) {
+export const CATEGORY_LABELS: Record<string, string> = {
+  business: 'Business',
+  personal: 'Personal',
+  government: 'Government',
+  media: 'Media / Press',
+  sports: 'Sports',
+  music: 'Music',
+  other: 'Other',
+};
+
+interface VerifiedBadgeProps {
+  category: string | null;
+  size?: number;
+  username: string;
+  displayName: string;
+  verifiedAt: string | null;
+}
+
+export function VerifiedBadge({ category, size = 16, username, displayName, verifiedAt }: VerifiedBadgeProps) {
+  const [showSheet, setShowSheet] = useState(false);
   const color = CATEGORY_COLORS[category || ''] || CATEGORY_COLORS.other;
+
   return (
-    <View style={styles.container}>
-      <MaterialCommunityIcons name="check-decagram" size={size} color={color} />
-    </View>
+    <>
+      <Pressable onPress={() => setShowSheet(true)} hitSlop={4} style={styles.container}>
+        <MaterialCommunityIcons name="check-decagram" size={size} color={color} />
+      </Pressable>
+      <VerificationBadgeSheet
+        visible={showSheet}
+        onClose={() => setShowSheet(false)}
+        category={category}
+        username={username}
+        displayName={displayName}
+        verifiedAt={verifiedAt}
+      />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     marginLeft: 4,
+    alignSelf: 'center',
   },
 });

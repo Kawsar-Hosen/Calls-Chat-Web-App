@@ -770,6 +770,8 @@ class PublicProfile(BaseModel):
     location: str | None = None
     website: str | None = None
     is_verified: bool = False
+    verified_category: str | None = None
+    verified_at: datetime | None = None
     created_at: datetime | None = None
     follower_count: int = 0
     following_count: int = 0

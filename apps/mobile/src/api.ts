@@ -43,6 +43,7 @@ function mapUser(raw: Json): User {
     dateOfBirth: raw.date_of_birth ? String(raw.date_of_birth) : null,
     isVerified: raw.is_verified === true,
     verifiedCategory: raw.verified_category ? String(raw.verified_category) : undefined,
+    verifiedAt: raw.verified_at ? String(raw.verified_at) : null,
     role: raw.role ? String(raw.role) : 'user',
     isBanned: raw.is_banned === true,
     isOnline: raw.is_online === true,
@@ -996,7 +997,34 @@ export async function submitVerificationRequest(category: string, displayName: s
   return res;
 }
 
-export async function getMyVerificationRequest() {
+export interface VerificationRequest {
+  id: string;
+  user_id: string;
+  category: string;
+  display_name: string;
+  reason: string;
+  document_urls: string[];
+  status: 'pending' | 'approved' | 'rejected';
+  admin_id: string | null;
+  admin_notes: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export async function getMyVerificationRequest(): Promise<VerificationRequest | null> {
   const res = await request<Json>('/verification/my-request');
-  return res;
+  if (!res) return null;
+  return {
+    id: String((res as any).id ?? ''),
+    user_id: String((res as any).user_id ?? ''),
+    category: String((res as any).category ?? ''),
+    display_name: String((res as any).display_name ?? ''),
+    reason: String((res as any).reason ?? ''),
+    document_urls: Array.isArray((res as any).document_urls) ? (res as any).document_urls : [],
+    status: String((res as any).status ?? 'pending') as 'pending' | 'approved' | 'rejected',
+    admin_id: (res as any).admin_id ?? null,
+    admin_notes: (res as any).admin_notes ?? null,
+    created_at: String((res as any).created_at ?? ''),
+    updated_at: (res as any).updated_at ?? null,
+  };
 }

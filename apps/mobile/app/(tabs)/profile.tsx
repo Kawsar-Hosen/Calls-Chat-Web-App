@@ -146,7 +146,7 @@ export default function ProfileScreen() {
         <View style={styles.infoSection}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Text style={[styles.name, { color: colors.text, fontFamily }]}>{user.displayName}</Text>
-            {user.isVerified ? <VerifiedBadge category={user.verifiedCategory} size={20} /> : null}
+            {user.isVerified ? <VerifiedBadge category={user.verifiedCategory ?? null} size={20} username={user.username} displayName={user.displayName} verifiedAt={user.verifiedAt ?? null} /> : null}
           </View>
           <Text style={[styles.username, { color: colors.muted, fontFamily }]}>@{user.username}</Text>
 

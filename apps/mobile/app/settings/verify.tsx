@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, ActivityInd
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScreenHeader } from '@/components/ui';
+import { ScreenHeader } from '@/ui';
 import { submitVerificationRequest, getMyVerificationRequest } from '@/api';
 import { useAuth } from '@/auth';
 
