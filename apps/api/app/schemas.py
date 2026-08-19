@@ -23,6 +23,7 @@ class UserPublic(ORMModel):
     website: str | None = None
     date_of_birth: str | None = None
     is_verified: bool = False
+    verified_category: str | None = None
     is_online: bool
     last_seen_at: datetime | None
     created_at: datetime | None = None
@@ -784,3 +785,61 @@ class PublicPost(BaseModel):
     comment_count: int = 0
     share_count: int = 0
     created_at: datetime
+
+
+class VerificationRequestCreate(ORMModel):
+    category: str
+    display_name: str
+    reason: str
+    document_urls: list[str] = []
+
+    @field_validator("category")
+    @classmethod
+    def valid_category(cls, v: str) -> str:
+        allowed = {"business", "personal", "government", "media", "sports", "music", "other"}
+        if v not in allowed:
+            raise ValueError(f"category must be one of: {', '.join(sorted(allowed))}")
+        return v
+
+
+class VerificationRequestView(ORMModel):
+    id: str
+    user_id: str
+    category: str
+    display_name: str
+    reason: str
+    document_urls: list[str] = []
+    status: str
+    admin_id: str | None = None
+    admin_notes: str | None = None
+    created_at: datetime
+    updated_at: datetime | None = None
+
+
+class VerificationRequestAdminView(ORMModel):
+    id: str
+    user_id: str
+    username: str | None = None
+    display_name: str | None = None
+    avatar_url: str | None = None
+    category: str
+    req_display_name: str
+    reason: str
+    document_urls: list[str] = []
+    status: str
+    admin_id: str | None = None
+    admin_notes: str | None = None
+    created_at: datetime
+    updated_at: datetime | None = None
+
+
+class VerificationRequestUpdate(ORMModel):
+    status: str
+    admin_notes: str | None = None
+
+    @field_validator("status")
+    @classmethod
+    def valid_status(cls, v: str) -> str:
+        if v not in {"approved", "rejected"}:
+            raise ValueError("status must be 'approved' or 'rejected'")
+        return v

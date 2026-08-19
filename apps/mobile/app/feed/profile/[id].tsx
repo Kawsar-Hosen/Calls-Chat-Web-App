@@ -11,6 +11,7 @@ import type { Post, SocialLink, UserProfile } from '@/types';
 import { Avatar } from '@/ui';
 import { EmojiText } from '@/emoji';
 import { PostCard } from '@/components/PostCard';
+import { VerifiedBadge } from '@/components/VerifiedBadge';
 
 const SOCIAL_PLATFORMS = [
   { id: 'instagram', label: 'Instagram', icon: 'instagram' as const, color: '#E1306C' },
@@ -172,7 +173,7 @@ export default function UserProfileScreen() {
             <View style={[styles.infoCard, { backgroundColor: colors.background }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={[styles.displayName, { color: colors.text, fontFamily }]}>{u.displayName}</Text>
-                {u.isVerified ? <MaterialCommunityIcons name="check-decagram" size={20} color="#1F66FF" /> : null}
+                {u.isVerified ? <VerifiedBadge category={u.verifiedCategory} size={20} /> : null}
               </View>
               <Text style={[styles.username, { color: colors.muted, fontFamily }]}>@{u.username}</Text>
 

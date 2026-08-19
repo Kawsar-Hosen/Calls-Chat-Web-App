@@ -13,6 +13,7 @@ export interface User {
   dateOfBirth?: string | null;
   gender?: string | null;
   isVerified?: boolean;
+  verifiedCategory?: string;
   role?: string;
   isBanned?: boolean;
   banReason?: string | null;

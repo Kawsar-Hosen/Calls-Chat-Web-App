@@ -13,6 +13,7 @@ import { ShareSheet } from '@/components/ShareSheet';
 import { ReactionSheet } from '@/components/ReactionSheet';
 import { playSound } from '@/sounds';
 import { FluentEmoji } from '@/emoji';
+import { VerifiedBadge } from '@/components/VerifiedBadge';
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
@@ -136,7 +137,7 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
         <View style={styles.headerInfo}>
           <Pressable onPress={() => router.push({ pathname: '/feed/profile/[id]' as any, params: { id: post.author.id } })}>
             <Text style={[styles.authorName, { color: colors.text, fontFamily }]}>{post.author.displayName}</Text>
-            {post.author.isVerified ? <MaterialCommunityIcons name="check-decagram" size={16} color="#1F66FF" style={{ marginLeft: 4 }} /> : null}
+            {post.author.isVerified ? <VerifiedBadge category={post.author.verifiedCategory} /> : null}
           </Pressable>
           <View style={styles.metaRow}>
             <Text style={[styles.time, { color: colors.faint }]}>{timeAgo(post.createdAt)}</Text>

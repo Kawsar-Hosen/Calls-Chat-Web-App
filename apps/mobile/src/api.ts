@@ -42,6 +42,7 @@ function mapUser(raw: Json): User {
     website: raw.website ? String(raw.website) : null,
     dateOfBirth: raw.date_of_birth ? String(raw.date_of_birth) : null,
     isVerified: raw.is_verified === true,
+    verifiedCategory: raw.verified_category ? String(raw.verified_category) : undefined,
     role: raw.role ? String(raw.role) : 'user',
     isBanned: raw.is_banned === true,
     isOnline: raw.is_online === true,
@@ -986,3 +987,16 @@ export const api = {
     };
   },
 };
+
+export async function submitVerificationRequest(category: string, displayName: string, reason: string, documentUrls: string[] = []) {
+  const res = await request<Json>('/verification/request', {
+    method: 'POST',
+    body: JSON.stringify({ category, display_name: displayName, reason, document_urls: documentUrls }),
+  });
+  return res;
+}
+
+export async function getMyVerificationRequest() {
+  const res = await request<Json>('/verification/my-request');
+  return res;
+}

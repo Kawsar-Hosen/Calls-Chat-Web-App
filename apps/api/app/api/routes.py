@@ -21,7 +21,8 @@ from app.email import generate_deletion_code, mask_email, render_deletion_email,
 from app.models import (AccountDeletion, AuthSession, Block, CallOffer, Conversation, ConversationMember, Device,
                         Follow, FriendRequest, Friendship, Group, GroupApplication, GroupMember, MediaAttachment,
                          Message, MessageRead, Notification, NotificationPreference, PasswordReset, Post, PostBookmark, PostComment, PostLike,
-                         PostMedia, PostShare, Reaction, Report, SocialLink, Story, StoryView, TelegramCode, User, CommentLike, BlogPost, new_id, utcnow)
+                         PostMedia, PostShare, Reaction, Report, SocialLink, Story, StoryView, TelegramCode, User, CommentLike, BlogPost,
+                         VerificationRequest, new_id, utcnow)
 from app.push import push_to_users
 from app.rate_limit import auth_rate_limit
 from app.schemas import *
@@ -1830,3 +1831,183 @@ async def admin_delete_blog(blog_id: str, admin_user: User = Depends(get_admin_u
     await db.delete(b)
     await db.commit()
     return {"success": True}
+
+
+# ── Verification Requests ──────────────────────────────────────────
+
+@router.post("/verification/request", response_model=VerificationRequestView, status_code=201)
+async def submit_verification_request(
+    data: VerificationRequestCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    existing = await db.scalar(
+        select(VerificationRequest).where(
+            VerificationRequest.user_id == user.id,
+            VerificationRequest.status == "pending",
+        )
+    )
+    if existing:
+        raise HTTPException(400, "You already have a pending verification request")
+
+    if user.is_verified:
+        raise HTTPException(400, "Your account is already verified")
+
+    import json as _json
+    req = VerificationRequest(
+        id=new_id(),
+        user_id=user.id,
+        category=data.category,
+        display_name=data.display_name,
+        reason=data.reason,
+        document_urls=_json.dumps(data.document_urls) if data.document_urls else None,
+        status="pending",
+        created_at=utcnow(),
+    )
+    db.add(req)
+    await db.commit()
+    await db.refresh(req)
+
+    doc_urls = []
+    if req.document_urls:
+        try:
+            doc_urls = _json.loads(req.document_urls)
+        except Exception:
+            doc_urls = []
+
+    return VerificationRequestView(
+        id=req.id, user_id=req.user_id, category=req.category,
+        display_name=req.display_name, reason=req.reason,
+        document_urls=doc_urls, status=req.status,
+        created_at=req.created_at, updated_at=req.updated_at,
+    )
+
+
+@router.get("/verification/my-request", response_model=VerificationRequestView | None)
+async def get_my_verification_request(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    import json as _json
+    req = await db.scalar(
+        select(VerificationRequest).where(
+            VerificationRequest.user_id == user.id,
+        ).order_by(VerificationRequest.created_at.desc())
+    )
+    if not req:
+        return None
+    doc_urls = []
+    if req.document_urls:
+        try:
+            doc_urls = _json.loads(req.document_urls)
+        except Exception:
+            doc_urls = []
+    return VerificationRequestView(
+        id=req.id, user_id=req.user_id, category=req.category,
+        display_name=req.display_name, reason=req.reason,
+        document_urls=doc_urls, status=req.status,
+        admin_id=req.admin_id, admin_notes=req.admin_notes,
+        created_at=req.created_at, updated_at=req.updated_at,
+    )
+
+
+@admin.get("/admin/verification")
+async def admin_list_verification_requests(
+    status: str | None = None,
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    import json as _json
+    q = select(VerificationRequest)
+    if status:
+        q = q.where(VerificationRequest.status == status)
+    q = q.order_by(VerificationRequest.created_at.desc()).offset(offset).limit(limit)
+    rows = (await db.execute(q)).scalars().all()
+    total = await db.scalar(select(func.count()).select_from(VerificationRequest).where(
+        VerificationRequest.status == status if status else True
+    ))
+
+    items = []
+    for r in rows:
+        u = await db.get(User, r.user_id)
+        doc_urls = []
+        if r.document_urls:
+            try:
+                doc_urls = _json.loads(r.document_urls)
+            except Exception:
+                doc_urls = []
+        items.append(VerificationRequestAdminView(
+            id=r.id, user_id=r.user_id,
+            username=u.username if u else None,
+            display_name=u.display_name if u else None,
+            avatar_url=u.avatar_url if u else None,
+            category=r.category, req_display_name=r.display_name,
+            reason=r.reason, document_urls=doc_urls,
+            status=r.status, admin_id=r.admin_id,
+            admin_notes=r.admin_notes,
+            created_at=r.created_at, updated_at=r.updated_at,
+        ))
+    return {"items": items, "total": total or 0}
+
+
+@admin.get("/admin/verification/{request_id}")
+async def admin_get_verification_request(
+    request_id: str,
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    import json as _json
+    r = await db.get(VerificationRequest, request_id)
+    if not r:
+        raise HTTPException(404, "Request not found")
+    u = await db.get(User, r.user_id)
+    doc_urls = []
+    if r.document_urls:
+        try:
+            doc_urls = _json.loads(r.document_urls)
+        except Exception:
+            doc_urls = []
+    return VerificationRequestAdminView(
+        id=r.id, user_id=r.user_id,
+        username=u.username if u else None,
+        display_name=u.display_name if u else None,
+        avatar_url=u.avatar_url if u else None,
+        category=r.category, req_display_name=r.display_name,
+        reason=r.reason, document_urls=doc_urls,
+        status=r.status, admin_id=r.admin_id,
+        admin_notes=r.admin_notes,
+        created_at=r.created_at, updated_at=r.updated_at,
+    )
+
+
+@admin.patch("/admin/verification/{request_id}")
+async def admin_update_verification_request(
+    request_id: str,
+    data: VerificationRequestUpdate,
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    r = await db.get(VerificationRequest, request_id)
+    if not r:
+        raise HTTPException(404, "Request not found")
+    r.status = data.status
+    r.admin_id = admin_user.id
+    r.admin_notes = data.admin_notes
+    r.updated_at = utcnow()
+
+    if data.status == "approved":
+        user = await db.get(User, r.user_id)
+        if user:
+            user.is_verified = True
+            user.verified_category = r.category
+            user.verified_at = utcnow()
+    elif data.status == "rejected":
+        user = await db.get(User, r.user_id)
+        if user:
+            user.is_verified = False
+            user.verified_category = None
+
+    await db.commit()
+    return {"success": True, "status": r.status}

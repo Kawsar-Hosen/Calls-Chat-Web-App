@@ -12,6 +12,7 @@ import { Avatar, Skeleton } from '@/ui';
 import { EmojiText } from '@/emoji';
 import { useFont } from '@/theme';
 import { PostCard } from '@/components/PostCard';
+import { VerifiedBadge } from '@/components/VerifiedBadge';
 import type { Post, ProfileMediaItem, SocialLink, StoryHighlight, UserProfile } from '@/types';
 
 type Tab = 'posts' | 'media' | 'likes' | 'about';
@@ -145,7 +146,7 @@ export default function ProfileScreen() {
         <View style={styles.infoSection}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Text style={[styles.name, { color: colors.text, fontFamily }]}>{user.displayName}</Text>
-            {user.isVerified ? <MaterialCommunityIcons name="check-decagram" size={20} color="#1F66FF" /> : null}
+            {user.isVerified ? <VerifiedBadge category={user.verifiedCategory} size={20} /> : null}
           </View>
           <Text style={[styles.username, { color: colors.muted, fontFamily }]}>@{user.username}</Text>
 
@@ -218,6 +219,13 @@ export default function ProfileScreen() {
               <MaterialCommunityIcons name="message-outline" size={16} color={colors.text} />
             </Pressable>
           </View>
+        )}
+
+        {isSelf && !user.isVerified && (
+          <Pressable onPress={() => router.push('/settings/verify')} style={({ pressed }) => [styles.verifyBtn, { backgroundColor: '#1F66FF12', borderColor: '#1F66FF30', opacity: pressed ? 0.8 : 1 }]}>
+            <MaterialCommunityIcons name="shield-checkmark-outline" size={18} color="#1F66FF" />
+            <Text style={[styles.verifyBtnText, { color: '#1F66FF' }]}>Get Verified</Text>
+          </Pressable>
         )}
 
         {highlights.length > 0 ? (
@@ -399,6 +407,8 @@ const styles = StyleSheet.create({
   actionBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
   actionRow: { flexDirection: 'row', marginHorizontal: 20, marginTop: 12, gap: 10 },
   actionBtnSecondary: { width: 48, height: 48, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  verifyBtn: { flexDirection: 'row', marginHorizontal: 20, marginTop: 10, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  verifyBtnText: { fontSize: 14, fontWeight: '700' },
   highlightsSection: { marginTop: 16 },
   highlightsRow: { paddingHorizontal: 20, gap: 14 },
   highlightItem: { alignItems: 'center', width: 72 },

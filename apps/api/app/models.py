@@ -39,6 +39,7 @@ class User(Base):
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     ban_reason: Mapped[str | None] = mapped_column(String(500))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_category: Mapped[str | None] = mapped_column(String(30))
     banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_online: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -473,3 +474,22 @@ class TelegramCode(Base):
     code: Mapped[str] = mapped_column(String(6))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class VerificationRequest(Base):
+    __tablename__ = "verification_requests"
+    __table_args__ = (
+        Index("ix_verification_status", "status"),
+        Index("ix_verification_user", "user_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    category: Mapped[str] = mapped_column(String(30))
+    display_name: Mapped[str] = mapped_column(String(80))
+    reason: Mapped[str] = mapped_column(String(1000))
+    document_urls: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    admin_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    admin_notes: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
