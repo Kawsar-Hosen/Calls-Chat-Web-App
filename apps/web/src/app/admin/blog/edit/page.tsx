@@ -1,12 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
 export default function EditBlogPost() {
-  const { id } = useParams();
   const router = useRouter();
+  const [id, setId] = useState('');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [excerpt, setExcerpt] = useState('');
@@ -16,11 +16,14 @@ export default function EditBlogPost() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('id');
+    if (!q) { router.push('/admin/blog'); return; }
+    setId(q);
     const t = localStorage.getItem('admin_token');
-    fetch(`${API}/admin/blog/${id}`, { headers: { Authorization: `Bearer ${t}` } })
+    fetch(`${API}/admin/blog/${q}`, { headers: { Authorization: `Bearer ${t}` } })
       .then(r => r.json()).then(p => { setTitle(p.title); setContent(p.content); setExcerpt(p.excerpt || ''); setCategory(p.category); setStatus(p.status); })
       .catch(() => router.push('/admin/blog')).finally(() => setLoading(false));
-  }, [id]);
+  }, []);
 
   const save = async (newStatus?: string) => {
     setSaving(true);

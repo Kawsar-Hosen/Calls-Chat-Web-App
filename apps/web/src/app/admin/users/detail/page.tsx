@@ -1,23 +1,24 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
 export default function UserDetailPage() {
-  const { id } = useParams();
   const router = useRouter();
+  const [id, setId] = useState('');
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const load = () => {
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('id');
+    if (!q) { router.push('/admin/users'); return; }
+    setId(q);
     const t = localStorage.getItem('admin_token');
-    fetch(`${API}/admin/users/${id}`, { headers: { Authorization: `Bearer ${t}` } })
+    fetch(`${API}/admin/users/${q}`, { headers: { Authorization: `Bearer ${t}` } })
       .then(r => r.json()).then(setUser).catch(() => router.push('/admin/users')).finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); }, [id]);
+  }, []);
 
   const update = async (data: any) => {
     setSaving(true);
@@ -42,7 +43,6 @@ export default function UserDetailPage() {
             <p className="text-xs text-gray-400 mt-1">Role: {user.role} &middot; Joined {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}</p>
           </div>
         </div>
-
         <div className="space-y-4">
           <div>
             <label className="text-sm font-bold text-gray-700">Role</label>

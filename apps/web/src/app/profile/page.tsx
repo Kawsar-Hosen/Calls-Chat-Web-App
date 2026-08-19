@@ -1,33 +1,34 @@
-import { notFound } from 'next/navigation';
+'use client';
+import { useEffect, useState } from 'react';
 import { Layout } from '@/components/Layout';
 
-const API_URL = process.env.API_URL || 'http://localhost:8000/api/v1';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
-async function getProfile(username: string) {
-  const res = await fetch(`${API_URL}/public/users/${username}`, { cache: 'no-store' });
-  if (!res.ok) return null;
-  return res.json();
-}
+export default function ProfilePage() {
+  const [profile, setProfile] = useState<any>(null);
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-async function getPosts(username: string) {
-  const res = await fetch(`${API_URL}/public/users/${username}/posts?limit=20`, { cache: 'no-store' });
-  if (!res.ok) return { items: [] };
-  return res.json();
-}
+  useEffect(() => {
+    const username = new URLSearchParams(window.location.search).get('u');
+    if (!username) { setError(true); setLoading(false); return; }
+    Promise.all([
+      fetch(`${API_URL}/public/users/${username}`).then(r => r.ok ? r.json() : Promise.reject()),
+      fetch(`${API_URL}/public/users/${username}/posts?limit=20`).then(r => r.ok ? r.json() : { items: [] }),
+    ]).then(([p, pos]) => { setProfile(p); setPosts(pos.items || []); })
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  }, []);
 
-export default async function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
-  const { username } = await params;
-  const profile = await getProfile(username);
-  if (!profile) notFound();
-  const posts = await getPosts(username);
+  if (loading) return <Layout><div className="text-center py-20 text-gray-400">Loading...</div></Layout>;
+  if (error || !profile) return <Layout><div className="text-center py-20 text-gray-400">Profile not found.</div></Layout>;
 
   return (
     <Layout>
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-          {profile.coverUrl && (
-            <img src={profile.coverUrl} alt="Cover" className="w-full h-48 object-cover" />
-          )}
+          {profile.coverUrl && <img src={profile.coverUrl} alt="Cover" className="w-full h-48 object-cover" />}
           <div className="px-6 pb-6">
             <div className="flex items-end -mt-12 mb-4">
               <img src={profile.avatarUrl || '/default-avatar.png'} alt={profile.displayName} className="w-24 h-24 rounded-full border-4 border-white object-cover" />
@@ -47,7 +48,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
         </div>
 
         <div className="mt-8 space-y-4">
-          {posts.items?.map((post: any) => (
+          {posts.map((post: any) => (
             <div key={post.id} className="bg-white rounded-xl border border-gray-200 p-5">
               <p className="text-gray-800 whitespace-pre-line">{post.content}</p>
               <div className="flex gap-4 mt-3 text-sm text-gray-500">
@@ -57,9 +58,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
               </div>
             </div>
           ))}
-          {(!posts.items || posts.items.length === 0) && (
-            <p className="text-center text-gray-400 py-8">No public posts yet.</p>
-          )}
+          {posts.length === 0 && <p className="text-center text-gray-400 py-8">No public posts yet.</p>}
         </div>
 
         <div className="mt-6 text-center">

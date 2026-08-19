@@ -39,7 +39,7 @@ export default function UsersPage() {
             {loading ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr> :
               users.map(u => (
                 <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="px-4 py-3"><Link href={`/admin/users/${u.id}`} className="font-bold text-brand hover:underline">{u.displayName || u.username}</Link><br/><span className="text-gray-400 text-xs">@{u.username}</span></td>
+                  <td className="px-4 py-3"><Link href={`/admin/users/detail?id=${u.id}`} className="font-bold text-brand hover:underline">{u.displayName || u.username}</Link><br/><span className="text-gray-400 text-xs">@{u.username}</span></td>
                   <td className="px-4 py-3 text-gray-600">{u.email || '—'}</td>
                   <td className="px-4 py-3"><span className={`text-xs font-bold px-2 py-1 rounded ${u.role === 'super_admin' ? 'bg-purple-100 text-purple-700' : u.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{u.role}</span></td>
                   <td className="px-4 py-3">{u.isBanned ? <span className="text-xs font-bold text-red-600">Banned</span> : u.isVerified ? <span className="text-xs font-bold text-brand">Verified</span> : <span className="text-xs text-gray-400">Active</span>}</td>

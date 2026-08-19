@@ -1,22 +1,25 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
 export default function ReportDetailPage() {
-  const { id } = useParams();
   const router = useRouter();
+  const [id, setId] = useState('');
   const [report, setReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [actionTaken, setActionTaken] = useState('');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('id');
+    if (!q) { router.push('/admin/reports'); return; }
+    setId(q);
     const t = localStorage.getItem('admin_token');
-    fetch(`${API}/admin/reports/${id}`, { headers: { Authorization: `Bearer ${t}` } })
+    fetch(`${API}/admin/reports/${q}`, { headers: { Authorization: `Bearer ${t}` } })
       .then(r => r.json()).then(setReport).catch(() => router.push('/admin/reports')).finally(() => setLoading(false));
-  }, [id]);
+  }, []);
 
   const resolve = async (status: string) => {
     const t = localStorage.getItem('admin_token');
@@ -24,7 +27,7 @@ export default function ReportDetailPage() {
       method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
       body: JSON.stringify({ status, action_taken: actionTaken || undefined, resolution_notes: notes || undefined }),
     });
-    if (res.ok) { const d = await res.json(); setReport((prev: any) => ({ ...prev, status })); }
+    if (res.ok) { setReport((prev: any) => ({ ...prev, status })); }
   };
 
   if (loading) return <p className="text-gray-500">Loading...</p>;
@@ -43,14 +46,13 @@ export default function ReportDetailPage() {
         <p className="text-sm text-gray-500 mb-1">Target: {report.targetId || 'N/A'}</p>
         <p className="text-sm text-gray-500 mb-4">Reported by: {report.reporterName} (@{report.reporterId?.slice(0, 8)})</p>
         {report.details && <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-700 mb-4">{report.details}</div>}
-
         <div className="space-y-3 border-t border-gray-200 pt-4">
-          <input value={actionTaken} onChange={e => setActionTaken(e.target.value)} placeholder="Action taken (e.g., Warning sent)" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" />
+          <input value={actionTaken} onChange={e => setActionTaken(e.target.value)} placeholder="Action taken" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" />
           <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Resolution notes..." className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" rows={3} />
           <div className="flex gap-3">
-            <button onClick={() => resolve('resolved')} className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-green-600">Resolve</button>
-            <button onClick={() => resolve('dismissed')} className="bg-gray-400 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-gray-500">Dismiss</button>
-            <button onClick={() => resolve('reviewed')} className="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-600">Mark Reviewed</button>
+            <button onClick={() => resolve('resolved')} className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-sm">Resolve</button>
+            <button onClick={() => resolve('dismissed')} className="bg-gray-400 text-white px-4 py-2 rounded-lg font-bold text-sm">Dismiss</button>
+            <button onClick={() => resolve('reviewed')} className="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-sm">Mark Reviewed</button>
           </div>
         </div>
       </div>

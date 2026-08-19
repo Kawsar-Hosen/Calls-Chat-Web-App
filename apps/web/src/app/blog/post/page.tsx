@@ -1,19 +1,26 @@
-import { notFound } from 'next/navigation';
+'use client';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 
-const API_URL = process.env.API_URL || 'http://localhost:8000/api/v1';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
-async function getBlogPost(slug: string) {
-  const res = await fetch(`${API_URL}/public/blog/${slug}`, { cache: 'no-store' });
-  if (!res.ok) return null;
-  return res.json();
-}
+export default function BlogPostPage() {
+  const [post, setPost] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const post = await getBlogPost(slug);
-  if (!post) notFound();
+  useEffect(() => {
+    const slug = new URLSearchParams(window.location.search).get('slug');
+    if (!slug) { setLoading(false); return; }
+    fetch(`${API_URL}/public/blog/${slug}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(setPost)
+      .catch(() => setPost(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <Layout><div className="text-center py-20 text-gray-400">Loading...</div></Layout>;
+  if (!post) return <Layout><div className="text-center py-20 text-gray-400">Post not found.</div></Layout>;
 
   return (
     <Layout>

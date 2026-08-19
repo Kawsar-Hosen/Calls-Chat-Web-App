@@ -1,0 +1,8 @@
+[
+  {
+    "include": "https://xyteee.com/*",
+    "pathPrefix": "/@*",
+    "target": "intent://xyteee.com/#Intent;package=com.xyteee.app;scheme=https;S.browser_fallback_url=https%3A%2F%2Fxyteee.com%2F;end",
+    "sha256_cert_fingerprints": []
+  }
+]

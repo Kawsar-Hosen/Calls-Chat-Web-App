@@ -1,0 +1,5 @@
+/profile  /profile  200
+/blog/post  /blog/post  200
+/admin/users/detail  /admin/users/detail  200
+/admin/reports/detail  /admin/reports/detail  200
+/admin/blog/edit  /admin/blog/edit  200

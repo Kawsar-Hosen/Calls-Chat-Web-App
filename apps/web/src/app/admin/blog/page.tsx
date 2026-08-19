@@ -37,7 +37,7 @@ export default function BlogAdminPage() {
               <p className="text-xs text-gray-400">{p.publishedAt ? new Date(p.publishedAt).toLocaleDateString() : 'Draft'}</p>
             </div>
             <div className="flex gap-2">
-              <Link href={`/admin/blog/${p.id}`} className="text-brand text-sm font-bold">Edit</Link>
+              <Link href={`/admin/blog/edit?id=${p.id}`} className="text-brand text-sm font-bold">Edit</Link>
               <button onClick={() => deletePost(p.id)} className="text-red-500 text-sm font-bold">Delete</button>
             </div>
           </div>

@@ -39,7 +39,7 @@ export default function ReportsPage() {
       <p className="text-sm text-gray-500 mb-4">{total} reports</p>
       <div className="space-y-3">
         {loading ? <p className="text-gray-400">Loading...</p> : reports.map(r => (
-          <Link key={r.id} href={`/admin/reports/${r.id}`} className="block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition">
+          <Link key={r.id} href={`/admin/reports/detail?id=${r.id}`} className="block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition">
             <div className="flex items-center justify-between">
               <div>
                 <span className={`text-xs font-bold px-2 py-0.5 rounded ${STATUS_COLORS[r.status] || ''}`}>{r.status}</span>
