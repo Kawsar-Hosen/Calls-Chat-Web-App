@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import { useAuth } from '@/auth';
 import { useSocket } from '@/socket';
-import { useTheme } from '@/theme';
+import { useTheme, useFont } from '@/theme';
 import type { FriendRequest, Group, SocketEvent, User } from '@/types';
 import { Avatar, ScreenHeader, SkeletonList } from '@/ui';
 import { useI18n } from '@/i18n';
@@ -14,6 +14,7 @@ import { useI18n } from '@/i18n';
 export default function ContactsScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const { fontFamily } = useFont();
   const { t, isRTL } = useI18n();
   const { subscribe } = useSocket();
   const router = useRouter();
@@ -80,7 +81,7 @@ export default function ContactsScreen() {
           renderItem={({ item: friend }) => (
             <Pressable onPress={() => openChat(friend)} style={({ pressed }) => [styles.friendCard, { backgroundColor: pressed ? colors.elevated : colors.surface, borderColor: colors.border }]}>
               <Avatar name={friend.displayName} uri={friend.avatarUrl ?? null} online={friend.isOnline} />
-              <View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.friendName, { color: colors.text, textAlign: isRTL ? 'right' : 'left' }]}>{friend.remark || friend.displayName}</Text><Text numberOfLines={1} style={[styles.friendHandle, { color: friend.isOnline ? colors.success : colors.muted, textAlign: isRTL ? 'right' : 'left' }]}>{friend.isOnline ? t('online') : `@${friend.username}`}</Text></View>
+              <View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.friendName, { color: colors.text, textAlign: isRTL ? 'right' : 'left', fontFamily }]}>{friend.remark || friend.displayName}</Text><Text numberOfLines={1} style={[styles.friendHandle, { color: friend.isOnline ? colors.success : colors.muted, textAlign: isRTL ? 'right' : 'left' }]}>{friend.isOnline ? t('online') : `@${friend.username}`}</Text></View>
               <Pressable hitSlop={10} onPress={() => openChat(friend)} style={[styles.chatBtn, { backgroundColor: colors.accentSoft }]}><MaterialCommunityIcons name="message-text-outline" size={18} color={colors.accent} /></Pressable>
             </Pressable>
           )}

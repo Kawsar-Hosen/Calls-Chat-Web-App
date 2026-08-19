@@ -9,7 +9,7 @@ from urllib.request import urlopen
 import jwt
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from jwt import PyJWKClient
-from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import (create_access_token, create_refresh_token, decode_token, hash_password,
@@ -20,8 +20,8 @@ from app.dependencies import get_current_session, get_current_user, websocket_us
 from app.email import generate_deletion_code, mask_email, render_deletion_email, render_password_reset_email, send_email
 from app.models import (AccountDeletion, AuthSession, Block, CallOffer, Conversation, ConversationMember, Device,
                         FriendRequest, Friendship, Group, GroupApplication, GroupMember, MediaAttachment,
-                        Message, MessageRead, NotificationPreference, PasswordReset, Post, PostBookmark, PostComment, PostLike,
-                        PostMedia, PostShare, Reaction, Report, SocialLink, Story, StoryView, User, CommentLike, new_id, utcnow)
+                         Message, MessageRead, Notification, NotificationPreference, PasswordReset, Post, PostBookmark, PostComment, PostLike,
+                        PostMedia, PostShare, Reaction, Report, SocialLink, Story, StoryView, TelegramCode, User, CommentLike, new_id, utcnow)
 from app.push import push_to_users
 from app.rate_limit import auth_rate_limit
 from app.schemas import *
@@ -110,7 +110,7 @@ async def register(data: RegisterRequest, request: Request, db: AsyncSession = D
     if await db.scalar(select(User.id).where(or_(User.email == data.email.lower(), User.username == data.username))):
         raise HTTPException(409, "Email or username already exists")
     user = User(email=data.email.lower(), username=data.username, display_name=data.display_name,
-                password_hash=hash_password(data.password))
+                password_hash=hash_password(data.password), date_of_birth=data.date_of_birth, gender=data.gender)
     db.add(user)
     await db.flush()
     tokens = await issue_tokens(db, user, data.device_name, request)
@@ -180,6 +180,167 @@ async def google_auth(data: GoogleAuthRequest, request: Request, db: AsyncSessio
         db.add(user)
         await db.flush()
     tokens = await issue_tokens(db, user, data.device_name, request)
+    await db.commit()
+    return AuthResponse(**tokens.model_dump(), user=user)
+
+
+# ── Facebook Auth ─────────────────────────────────────────────
+
+
+@router.post("/auth/facebook", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
+async def facebook_auth(data: FacebookAuthRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    if not settings.facebook_app_id:
+        raise HTTPException(503, "Facebook auth is not configured")
+
+    def _fetch_fb_user():
+        import urllib.request, urllib.parse
+        fields = "id,name,email,picture.width(200).height(200)"
+        url = f"https://graph.facebook.com/me?fields={fields}&access_token={urllib.parse.quote(data.access_token)}"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+
+    try:
+        fb = await asyncio.to_thread(_fetch_fb_user)
+    except Exception:
+        raise HTTPException(400, "Invalid Facebook access token")
+
+    fb_id = str(fb.get("id") or "")
+    if not fb_id:
+        raise HTTPException(400, "Could not retrieve Facebook user info")
+
+    email = str(fb.get("email") or "").strip().lower() or None
+    display_name = str(fb.get("name") or "").strip()[:80] or f"FB User {fb_id[-4:]}"
+    picture_data = fb.get("picture", {}).get("data", {})
+    avatar_url = str(picture_data.get("url") or "").strip() or None
+    if avatar_url and not avatar_url.startswith("https://"):
+        avatar_url = None
+
+    user = await db.scalar(select(User).where(User.facebook_id == fb_id))
+    if not user and email:
+        user = await db.scalar(select(User).where(User.email == email))
+    if not user:
+        username = await _available_username(db, f"fb_{display_name.lower().replace(' ', '')[:12]}")
+        user = User(
+            facebook_id=fb_id,
+            email=email,
+            username=username,
+            display_name=display_name,
+            password_hash=hash_password(secrets.token_urlsafe(48)),
+            avatar_url=avatar_url,
+        )
+        db.add(user)
+        await db.flush()
+    else:
+        if not user.facebook_id:
+            user.facebook_id = fb_id
+        if avatar_url and not user.avatar_url:
+            user.avatar_url = avatar_url
+
+    tokens = await issue_tokens(db, user, data.device_name, request)
+    await db.commit()
+    return AuthResponse(**tokens.model_dump(), user=user)
+
+
+# ── Telegram Auth ──────────────────────────────────────────────
+
+
+class TelegramStartRequest(BaseModel):
+    phone: str = Field(min_length=8, max_length=20)
+
+
+class TelegramVerifyRequest(BaseModel):
+    phone: str = Field(min_length=8, max_length=20)
+    code: str = Field(min_length=6, max_length=6)
+
+
+@router.post("/auth/telegram/start")
+async def telegram_start(data: TelegramStartRequest, db: AsyncSession = Depends(get_db)):
+    if not settings.telegram_bot_token:
+        raise HTTPException(503, "Telegram auth is not configured")
+
+    code = f"{secrets.randbelow(1000000):06d}"
+    expires = utcnow() + timedelta(minutes=5)
+    phone_digits = "".join(c for c in data.phone if c.isdigit())
+
+    def _fetch_chat_id():
+        import urllib.request, urllib.parse
+        url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/getUpdates?limit=20"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+
+    def _send_code(cid: int, txt: str):
+        import urllib.request, urllib.parse
+        params = urllib.parse.urlencode({"chat_id": cid, "text": txt, "parse_mode": "HTML"})
+        url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage?{params}"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+
+    chat_id = None
+    try:
+        result = await asyncio.to_thread(_fetch_chat_id)
+        if result.get("ok"):
+            for update in reversed(result.get("result", [])):
+                msg = update.get("message")
+                if msg and msg.get("text", "").strip().lower() in ("/start", "start"):
+                    chat_id = msg.get("from", {}).get("id")
+                    if chat_id:
+                        break
+    except Exception:
+        pass
+
+    if not chat_id:
+        raise HTTPException(400, "Could not find your Telegram chat. Please open @xyteee_auth_bot on Telegram and send /start first.")
+
+    db.add(TelegramCode(phone=phone_digits, code=code, expires_at=expires))
+    await db.commit()
+
+    try:
+        result = await asyncio.to_thread(_send_code, chat_id, f"🔐 Your XYTEEE verification code:\n\n<code>{code}</code>\n\n⏱ Expires in 5 minutes. Do not share it with anyone.")
+        if not result.get("ok"):
+            raise HTTPException(400, "Failed to send code via Telegram")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(400, "Failed to send code via Telegram")
+
+    return {"success": True, "message": "Code sent via Telegram"}
+
+
+@router.post("/auth/telegram/verify")
+async def telegram_verify(data: TelegramVerifyRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    now = utcnow()
+    phone_digits = "".join(c for c in data.phone if c.isdigit())
+    code_row = await db.scalar(
+        select(TelegramCode).where(
+            TelegramCode.phone == phone_digits,
+            TelegramCode.code == data.code,
+            TelegramCode.expires_at > now,
+        ).order_by(TelegramCode.created_at.desc())
+    )
+    if not code_row:
+        raise HTTPException(400, "Invalid or expired code")
+
+    await db.delete(code_row)
+    await db.execute(delete(TelegramCode).where(TelegramCode.phone == phone_digits, TelegramCode.expires_at < now))
+
+    user = await db.scalar(select(User).where(User.phone == phone_digits))
+    if not user:
+        username = await _available_username(db, f"tg_{phone_digits[-6:]}")
+        user = User(
+            phone=phone_digits,
+            phone_code=data.phone[:4] if data.phone.startswith("+") else "",
+            email=f"{username}@telegram.xyteee",
+            username=username,
+            display_name=f"TG User {phone_digits[-4:]}",
+            password_hash=hash_password(secrets.token_urlsafe(48)),
+        )
+        db.add(user)
+        await db.flush()
+
+    tokens = await issue_tokens(db, user, "Telegram Auth", request)
     await db.commit()
     return AuthResponse(**tokens.model_dump(), user=user)
 
@@ -1064,12 +1225,142 @@ async def change_email(data: ChangeEmailRequest, user: User = Depends(get_curren
     await db.commit()
 
 
-# ── Report ───────────────────────────────────────────────────────
+# ── Notifications ────────────────────────────────────────────────
+
+
+@router.get("/notifications", response_model=list[NotificationView])
+async def list_notifications(limit: int = Query(default=30, le=100), cursor: str | None = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    q = select(Notification).where(Notification.user_id == user.id).order_by(Notification.created_at.desc()).limit(limit)
+    if cursor:
+        cur = await db.get(Notification, cursor)
+        if cur:
+            q = q.where(Notification.created_at < cur.created_at)
+    rows = (await db.scalars(q)).all()
+    from_ids = list({r.from_user_id for r in rows if r.from_user_id})
+    users_map: dict[str, User] = {}
+    if from_ids:
+        from_users = (await db.scalars(select(User).where(User.id.in_(from_ids)))).all()
+        users_map = {u.id: u for u in from_users}
+    result = []
+    for r in rows:
+        fu = users_map.get(r.from_user_id) if r.from_user_id else None
+        result.append(NotificationView(
+            id=r.id, from_user_id=r.from_user_id,
+            from_user_name=fu.display_name if fu else None,
+            from_user_avatar=fu.avatar_url if fu else None,
+            type=r.type, target_type=r.target_type, target_id=r.target_id,
+            body=r.body, is_read=r.is_read, created_at=r.created_at,
+        ))
+    return result
+
+
+@router.get("/notifications/count")
+async def notification_count(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    count = (await db.scalar(select(func.count(Notification.id)).where(Notification.user_id == user.id, Notification.is_read == False))) or 0
+    return {"count": int(count)}
+
+
+@router.post("/notifications/read")
+async def mark_notifications_read(data: dict | None = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    ids: list[str] | None = (data or {}).get("ids")
+    if ids:
+        await db.execute(update(Notification).where(Notification.id.in_(ids), Notification.user_id == user.id).values(is_read=True))
+    else:
+        await db.execute(update(Notification).where(Notification.user_id == user.id, Notification.is_read == False).values(is_read=True))
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/notifications", status_code=204)
+async def clear_notifications(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await db.execute(delete(Notification).where(Notification.user_id == user.id))
+    await db.commit()
+
+
+# ── Unified Search ───────────────────────────────────────────────
+
+
+@router.get("/search")
+async def unified_search(q: str = Query(min_length=1, max_length=80), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    pattern = f"%{q}%"
+    user_rows = list((await db.scalars(select(User).where(or_(User.username.ilike(pattern), User.display_name.ilike(pattern)), User.id != user.id).limit(10))).all())
+    users = []
+    for u in user_rows:
+        uid1, uid2 = sorted([user.id, u.id])
+        friend = await db.scalar(select(Friendship.id).where(Friendship.user_low_id == uid1, Friendship.user_high_id == uid2))
+        req = await db.scalar(select(FriendRequest.id).where(or_((FriendRequest.requester_id == user.id) & (FriendRequest.recipient_id == u.id), (FriendRequest.requester_id == u.id) & (FriendRequest.recipient_id == user.id)), FriendRequest.status == "pending"))
+        blocked = await db.scalar(select(Block.blocked_id).where(Block.blocker_id == user.id, Block.blocked_id == u.id))
+        r = UserSearchResult.model_validate(u).model_copy(update={"is_friend": bool(friend), "request_status": "accepted" if friend else "pending" if req else None, "request_id": req, "is_blocked": bool(blocked)})
+        users.append(r)
+    post_rows = list((await db.scalars(select(Post).where(Post.content.ilike(pattern), Post.author_id != user.id, Post.deleted_at.is_(None)).order_by(Post.created_at.desc()).limit(10))).all())
+    posts = []
+    for p in post_rows:
+        posts.append({"id": p.id, "body": p.content, "author_id": p.author_id, "created_at": p.created_at.isoformat()})
+    return {"users": users, "posts": posts}
 
 
 @router.post("/reports", status_code=201)
 async def create_report(data: ReportRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     db.add(Report(reporter_id=user.id, type=data.type, target_id=data.target_id, reason=data.reason, details=data.details))
+    await db.commit()
+
+
+# ── Permanent Data Delete ───────────────────────────────────────
+
+
+@router.get("/settings/data/usage")
+async def get_data_usage(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models import Story
+    post_count = (await db.scalar(select(func.count(Post.id)).where(Post.author_id == user.id))) or 0
+    story_count = (await db.scalar(select(func.count(Story.id)).where(Story.user_id == user.id))) or 0
+    msg_count = (await db.scalar(select(func.count(Message.id)).where(Message.sender_id == user.id))) or 0
+    media_count = (await db.scalar(select(func.count(MediaAttachment.id)).where(MediaAttachment.uploader_id == user.id))) or 0
+    media_size = (await db.scalar(select(func.coalesce(func.sum(MediaAttachment.size), 0)).where(MediaAttachment.uploader_id == user.id))) or 0
+    return {"posts": int(post_count), "stories": int(story_count), "messages": int(msg_count), "media": int(media_count), "media_bytes": int(media_size)}
+
+
+@router.delete("/settings/data/posts", status_code=204)
+async def delete_all_posts(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models import PostMedia, PostLike, PostComment, PostShare, PostBookmark
+    post_ids = list((await db.scalars(select(Post.id).where(Post.author_id == user.id))).all())
+    if post_ids:
+        for model in [PostMedia, PostLike, PostComment, PostShare, PostBookmark]:
+            await db.execute(delete(model).where(model.post_id.in_(post_ids)))
+        await db.execute(delete(Post).where(Post.id.in_(post_ids)))
+        await db.commit()
+
+
+@router.delete("/settings/data/stories", status_code=204)
+async def delete_all_stories(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models import StoryView, StoryReaction, StoryReply, StoryHighlight, StoryHighlightItem
+    story_ids = list((await db.scalars(select(Story.id).where(Story.user_id == user.id))).all())
+    if story_ids:
+        for model in [StoryView, StoryReaction, StoryReply]:
+            await db.execute(delete(model).where(model.story_id.in_(story_ids)))
+        await db.execute(delete(StoryHighlightItem).where(StoryHighlightItem.story_id.in_(story_ids)))
+        await db.execute(delete(Story).where(Story.id.in_(story_ids)))
+        await db.commit()
+
+
+@router.delete("/settings/data/messages", status_code=204)
+async def delete_all_messages(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models import MessageRead, Reaction
+    msg_ids = list((await db.scalars(select(Message.id).where(Message.sender_id == user.id))).all())
+    if msg_ids:
+        for model in [MessageRead, Reaction]:
+            await db.execute(delete(model).where(model.message_id.in_(msg_ids)))
+        await db.execute(delete(MediaAttachment).where(MediaAttachment.message_id.in_(msg_ids)))
+        await db.execute(delete(Message).where(Message.id.in_(msg_ids)))
+        await db.commit()
+
+
+@router.delete("/settings/data/media", status_code=204)
+async def delete_all_media(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    items = list((await db.scalars(select(MediaAttachment).where(MediaAttachment.uploader_id == user.id))).all())
+    for item in items:
+        try: await asyncio.to_thread(storage.delete, item.url)
+        except: pass
+    await db.execute(delete(MediaAttachment).where(MediaAttachment.uploader_id == user.id))
     await db.commit()
 
 

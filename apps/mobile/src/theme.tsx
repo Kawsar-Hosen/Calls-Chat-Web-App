@@ -62,3 +62,71 @@ export function useTheme() {
   if (!value) throw new Error('useTheme must be used inside ThemeProvider');
   return value;
 }
+
+/* ── Font System ──────────────────────────────────────────────── */
+
+export interface FontStyleDef {
+  id: string;
+  label: string;
+  family: string | undefined;
+  scale: number;
+  category: 'bangla' | 'english';
+}
+
+export const FONT_STYLES: FontStyleDef[] = [
+  // Bangla styles
+  { id: 'system', label: 'System Default', family: undefined, scale: 1, category: 'bangla' },
+  { id: 'nikosh', label: 'Nikosh', family: 'Nikosh', scale: 1, category: 'bangla' },
+  { id: 'solaiman', label: 'SolaimanLipi', family: 'SolaimanLipi', scale: 1, category: 'bangla' },
+  { id: 'kalpurush', label: 'Kalpurush', family: 'Kalpurush', scale: 1, category: 'bangla' },
+  { id: 'hind siliguri', label: 'Hind Siliguri', family: 'Hind Siliguri', scale: 1, category: 'bangla' },
+  // English styles
+  { id: 'roboto', label: 'Roboto', family: 'Roboto', scale: 1, category: 'english' },
+  { id: 'open sans', label: 'Open Sans', family: 'OpenSans', scale: 1, category: 'english' },
+  { id: 'lato', label: 'Lato', family: 'Lato', scale: 1, category: 'english' },
+  { id: 'montserrat', label: 'Montserrat', family: 'Montserrat', scale: 1, category: 'english' },
+  { id: 'poppins', label: 'Poppins', family: 'Poppins', scale: 1, category: 'english' },
+];
+
+const FONT_SCALES: Record<string, number> = {
+  small: 0.88,
+  default: 1,
+  large: 1.12,
+  xlarge: 1.25,
+};
+
+export function getFontFamily(styleId: string): string | undefined {
+  return FONT_STYLES.find((f) => f.id === styleId)?.family;
+}
+
+export function getFontScale(fontSize?: string): number {
+  return FONT_SCALES[fontSize ?? 'default'] ?? 1;
+}
+
+interface FontContextValue {
+  fontFamily: string | undefined;
+  scale: number;
+  styleId: string;
+  fontSize: string;
+}
+
+const FontContext = createContext<FontContextValue>({ fontFamily: undefined, scale: 1, styleId: 'system', fontSize: 'default' });
+
+export function FontProvider({ styleId, fontSize, children }: PropsWithChildren & { styleId: string; fontSize: string }) {
+  const value: FontContextValue = {
+    fontFamily: getFontFamily(styleId),
+    scale: getFontScale(fontSize),
+    styleId,
+    fontSize,
+  };
+  return <FontContext.Provider value={value}>{children}</FontContext.Provider>;
+}
+
+export function useFont() {
+  return useContext(FontContext);
+}
+
+export function useScaled(): (size: number) => number {
+  const { scale } = useContext(FontContext);
+  return (size: number) => Math.round(size * scale);
+}

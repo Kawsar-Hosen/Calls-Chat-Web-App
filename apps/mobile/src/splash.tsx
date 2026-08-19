@@ -1,60 +1,75 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-
-const NAVY = '#0F1520';
-const NAVY_LIGHT = '#1B2640';
+import { Animated, Easing, Image, StyleSheet, View } from 'react-native';
 
 export function SplashScreen({ ready, onFinish }: { ready: boolean; onFinish: () => void }) {
-  const overlay = useRef(new Animated.Value(0)).current;
-  const logo = useRef(new Animated.Value(0)).current;
-  const spin = useRef(new Animated.Value(0)).current;
-  const pulse = useRef(new Animated.Value(0)).current;
+  const fade = useRef(new Animated.Value(0)).current;
+  const iconScale = useRef(new Animated.Value(0.3)).current;
+  const iconOpacity = useRef(new Animated.Value(0)).current;
+  const ring1 = useRef(new Animated.Value(0)).current;
+  const ring2 = useRef(new Animated.Value(0)).current;
+  const ring3 = useRef(new Animated.Value(0)).current;
+  const barWidth = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(overlay, { toValue: 1, duration: 450, useNativeDriver: true }),
-      Animated.spring(logo, { toValue: 1, friction: 5, tension: 42, useNativeDriver: true }),
-    ]).start();
-    const spinner = Animated.loop(Animated.timing(spin, { toValue: 1, duration: 950, easing: Easing.linear, useNativeDriver: true }));
-    const ping = Animated.loop(Animated.sequence([
-      Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-      Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-    ]));
-    spinner.start();
-    ping.start();
-    return () => { spinner.stop(); ping.stop(); };
-  }, [overlay, logo, spin, pulse]);
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(fade, { toValue: 1, duration: 250, useNativeDriver: true }),
+        Animated.timing(iconOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.spring(iconScale, { toValue: 1, friction: 6, tension: 45, useNativeDriver: true }),
+      ]),
+      Animated.delay(100),
+      Animated.parallel([
+        Animated.timing(ring1, { toValue: 1, duration: 700, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+        Animated.timing(ring2, { toValue: 1, duration: 900, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+        Animated.timing(ring3, { toValue: 1, duration: 1100, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+      ]),
+    ]).start(() => {});
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(barWidth, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+        Animated.delay(500),
+        Animated.timing(barWidth, { toValue: 0, duration: 0, useNativeDriver: false }),
+      ])
+    ).start();
+  }, [fade, iconScale, iconOpacity, ring1, ring2, ring3, barWidth]);
 
   useEffect(() => {
     if (ready) {
       Animated.parallel([
-        Animated.timing(overlay, { toValue: 0, duration: 320, useNativeDriver: true }),
-        Animated.timing(logo, { toValue: 0, duration: 320, useNativeDriver: true }),
+        Animated.timing(fade, { toValue: 0, duration: 400, useNativeDriver: true }),
+        Animated.timing(iconScale, { toValue: 1.4, duration: 400, useNativeDriver: true }),
       ]).start(() => onFinish());
     }
-  }, [ready, overlay, logo, onFinish]);
+  }, [ready, fade, iconScale, onFinish]);
 
-  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const ringScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 2.05] });
-  const ringOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] });
+  const ringScale1 = ring1.interpolate({ inputRange: [0, 1], outputRange: [0.4, 2.0] });
+  const ringOpacity1 = ring1.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 0.4, 0] });
+  const ringScale2 = ring2.interpolate({ inputRange: [0, 1], outputRange: [0.3, 2.6] });
+  const ringOpacity2 = ring2.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 0.3, 0] });
+  const ringScale3 = ring3.interpolate({ inputRange: [0, 1], outputRange: [0.2, 3.2] });
+  const ringOpacity3 = ring3.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 0.2, 0] });
+
+  const barW = barWidth.interpolate({ inputRange: [0, 1], outputRange: [0, 180] });
 
   return (
-    <Animated.View style={[styles.root, { opacity: overlay }]}>
-      <LinearGradient colors={[NAVY, NAVY_LIGHT]} style={StyleSheet.absoluteFill} />
+    <Animated.View style={[styles.root, { opacity: fade }]}>
       <View style={styles.center}>
-        <View style={styles.logoArea}>
-          <Animated.View pointerEvents="none" style={[styles.ping, { opacity: ringOpacity, transform: [{ scale: ringScale }] }]} />
-          <Animated.View pointerEvents="none" style={[styles.ping, { opacity: ringOpacity, transform: [{ scale: ringScale }] }, { position: 'absolute' }]} />
-          <Animated.Image
-            source={require('../assets/splash-icon.png')}
-            style={[styles.logo, { opacity: logo, transform: [{ scale: logo.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }] }]}
-          />
-        </View>
-        <Animated.Text style={[styles.brand, { opacity: logo }]}>XYTEEE</Animated.Text>
-        <View style={styles.spinnerWrap}>
-          <Animated.View style={[styles.spinner, { transform: [{ rotate }] }]} />
-          <Animated.View style={[styles.spinnerReverse, { transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] }) }] }]} />
+        {/* Rings burst outward from icon */}
+        <Animated.View style={[styles.ring, { opacity: ringOpacity1, transform: [{ scale: ringScale1 }] }]} />
+        <Animated.View style={[styles.ring, { opacity: ringOpacity2, transform: [{ scale: ringScale2 }] }]} />
+        <Animated.View style={[styles.ring, { opacity: ringOpacity3, transform: [{ scale: ringScale3 }] }]} />
+
+        {/* Icon */}
+        <Animated.Image
+          source={require('../assets/splash-icon.png')}
+          style={[styles.icon, { opacity: iconOpacity, transform: [{ scale: iconScale }] }]}
+          resizeMode="contain"
+        />
+
+        {/* Loading bar under icon */}
+        <View style={styles.barWrap}>
+          <Animated.View style={[styles.bar, { width: barW }]} />
         </View>
       </View>
     </Animated.View>
@@ -62,36 +77,10 @@ export function SplashScreen({ ready, onFinish }: { ready: boolean; onFinish: ()
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: NAVY },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  logoArea: { width: 168, height: 168, alignItems: 'center', justifyContent: 'center' },
-  ping: {
-    position: 'absolute',
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    borderWidth: 2,
-    borderColor: '#4D82FF',
-  },
-  logo: { width: 132, height: 132 },
-  brand: { marginTop: 8, color: '#FFFFFF', fontSize: 22, fontWeight: '800', letterSpacing: 6 },
-  spinnerWrap: { position: 'absolute', bottom: 120, width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
-  spinner: {
-    position: 'absolute',
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.18)',
-    borderTopColor: '#4D82FF',
-  },
-  spinnerReverse: {
-    position: 'absolute',
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.18)',
-    borderBottomColor: '#FFFFFF',
-  },
+  root: { flex: 1, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  center: { alignItems: 'center', justifyContent: 'center' },
+  ring: { position: 'absolute', width: 120, height: 120, borderRadius: 60, borderWidth: 2, borderColor: '#4D82FF' },
+  icon: { width: 120, height: 120, borderRadius: 22 },
+  barWrap: { marginTop: 14, width: 180, height: 3, borderRadius: 2, backgroundColor: '#E5E7EB', overflow: 'hidden' },
+  bar: { height: 3, borderRadius: 2, backgroundColor: '#4D82FF' },
 });

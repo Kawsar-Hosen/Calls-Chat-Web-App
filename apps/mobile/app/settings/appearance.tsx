@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/auth';
-import { useTheme } from '@/theme';
+import { useTheme, FONT_STYLES } from '@/theme';
 import { useI18n } from '@/i18n';
 import { ScreenHeader } from '@/ui';
 
@@ -21,11 +21,15 @@ const ACCENT_COLORS = [
   '#636E72',
 ];
 
+const BANGLA_FONTS = FONT_STYLES.filter((f) => f.category === 'bangla');
+const ENGLISH_FONTS = FONT_STYLES.filter((f) => f.category === 'english');
+
 export default function AppearanceScreen() {
   const { user, updateProfile } = useAuth();
   const { colors } = useTheme();
   const { isRTL } = useI18n();
   const [fontSize, setFontSize] = useState(user?.fontSize ?? 'default');
+  const [fontStyle, setFontStyle] = useState(user?.fontStyle ?? 'system');
   const [accentColor, setAccentColor] = useState(user?.accentColor ?? colors.accent);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -40,10 +44,14 @@ export default function AppearanceScreen() {
     } catch {}
   };
 
+  const previewSize = FONT_SIZES.find((f) => f.value === fontSize)?.size ?? 15;
+
   return (
     <SafeAreaView edges={['top']} style={[styles.safe, { backgroundColor: colors.background }]}>
       <ScreenHeader title="Appearance" back />
       <ScrollView contentContainerStyle={styles.content}>
+
+        {/* Font Size */}
         <Text style={[styles.sectionLabel, alignment, { color: colors.muted }]}>FONT SIZE</Text>
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {FONT_SIZES.map((opt) => (
@@ -56,6 +64,52 @@ export default function AppearanceScreen() {
           ))}
         </View>
 
+        {/* Font Style - Bangla */}
+        <Text style={[styles.sectionLabel, alignment, { color: colors.muted }]}>FONT STYLE — BANGLA</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {BANGLA_FONTS.map((font, i) => (
+            <Pressable key={font.id} onPress={() => { setFontStyle(font.id); void persist({ fontStyle: font.id }); }} style={({ pressed }) => [styles.optionRow, direction, { backgroundColor: pressed ? colors.elevated : 'transparent', borderBottomColor: i < BANGLA_FONTS.length - 1 ? colors.border : 'transparent' }]}>
+              <View style={[styles.radio, { borderColor: fontStyle === font.id ? colors.accent : colors.faint, backgroundColor: fontStyle === font.id ? colors.accent : 'transparent' }]}>
+                {fontStyle === font.id && <View style={styles.radioDot} />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[{ fontSize: 15, fontWeight: '700', color: colors.text, fontFamily: font.family }, alignment]}>{font.label}</Text>
+                <Text style={[{ fontSize: 11, color: colors.muted, marginTop: 2 }, alignment]}>{font.family ?? 'Default system font'}</Text>
+              </View>
+              {fontStyle === font.id && <MaterialCommunityIcons name="check" size={18} color={colors.accent} />}
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Font Style - English */}
+        <Text style={[styles.sectionLabel, alignment, { color: colors.muted }]}>FONT STYLE — ENGLISH</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {ENGLISH_FONTS.map((font, i) => (
+            <Pressable key={font.id} onPress={() => { setFontStyle(font.id); void persist({ fontStyle: font.id }); }} style={({ pressed }) => [styles.optionRow, direction, { backgroundColor: pressed ? colors.elevated : 'transparent', borderBottomColor: i < ENGLISH_FONTS.length - 1 ? colors.border : 'transparent' }]}>
+              <View style={[styles.radio, { borderColor: fontStyle === font.id ? colors.accent : colors.faint, backgroundColor: fontStyle === font.id ? colors.accent : 'transparent' }]}>
+                {fontStyle === font.id && <View style={styles.radioDot} />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[{ fontSize: 15, fontWeight: '700', color: colors.text, fontFamily: font.family }, alignment]}>{font.label}</Text>
+                <Text style={[{ fontSize: 11, color: colors.muted, marginTop: 2 }, alignment]}>{font.family}</Text>
+              </View>
+              {fontStyle === font.id && <MaterialCommunityIcons name="check" size={18} color={colors.accent} />}
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Preview */}
+        <Text style={[styles.sectionLabel, alignment, { color: colors.muted }]}>PREVIEW</Text>
+        <View style={[styles.previewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[{ fontSize: previewSize, fontWeight: '700', color: colors.text, fontFamily: FONT_STYLES.find((f) => f.id === fontStyle)?.family }, alignment]}>
+            The quick brown fox jumps over the lazy dog
+          </Text>
+          <Text style={[{ fontSize: previewSize, fontWeight: '400', color: colors.muted, marginTop: 8, fontFamily: FONT_STYLES.find((f) => f.id === fontStyle)?.family }, alignment]}>
+            বাংলা টেক্সট — দ্রুত বাদল নেকড়ে অলস কুকুরের ওপর দিয়ে লাফ দেয়
+          </Text>
+        </View>
+
+        {/* Accent Color */}
         <Text style={[styles.sectionLabel, alignment, { color: colors.muted }]}>ACCENT COLOR</Text>
         <View style={[styles.colorGrid, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {ACCENT_COLORS.map((c) => (
@@ -65,7 +119,7 @@ export default function AppearanceScreen() {
           ))}
         </View>
       </ScrollView>
-      {toast ? <View style={[styles.toast, { backgroundColor: colors.text }]}><Text style={{ color: colors.background, fontSize: 13, fontWeight: '700' }}>{toast}</Text></View> : null}
+      {toast ? <View style={[styles.toast, { backgroundColor: colors.text }]}><MaterialCommunityIcons name="check" size={16} color={colors.background} /><Text style={{ color: colors.background, fontSize: 13, fontWeight: '700' }}>{toast}</Text></View> : null}
     </SafeAreaView>
   );
 }
@@ -75,10 +129,11 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingBottom: 32, gap: 8 },
   sectionLabel: { fontSize: 11, fontWeight: '800', marginTop: 12, marginBottom: 4, paddingHorizontal: 4, letterSpacing: 0.5 },
   card: { borderWidth: 1, borderRadius: 14, overflow: 'hidden' },
-  optionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 14, gap: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  optionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 14, gap: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FFF' },
+  previewCard: { borderWidth: 1, borderRadius: 14, padding: 16, gap: 4 },
   colorGrid: { flexDirection: 'row', flexWrap: 'wrap', borderWidth: 1, borderRadius: 14, padding: 12, gap: 12 },
   colorDot: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
-  toast: { position: 'absolute', bottom: 30, alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
+  toast: { position: 'absolute', bottom: 30, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
 });

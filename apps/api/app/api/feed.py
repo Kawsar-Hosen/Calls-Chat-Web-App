@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.dependencies import get_current_user
-from app.models import (CommentLike, Follow, Friendship, MediaAttachment, Post, PostBookmark, PostComment, PostLike,
+from app.models import (CommentLike, Follow, Friendship, MediaAttachment, Notification, Post, PostBookmark, PostComment, PostLike,
                         PostMedia, PostShare, Story, StoryHighlight, StoryHighlightItem, StoryReaction, StoryReply, StoryView,
                         ProfileView, User, new_id, utcnow)
 from app.schemas import (BookmarkResponse, CommentPage, CommentView, CommentReactionView,
@@ -244,6 +244,7 @@ async def react_post(
             "android": {"notification": {"channel_id": "messages"}},
             "data": {"type": "post.reacted", "post_id": post_id, "user_id": user.id},
         })
+        db.add(Notification(id=new_id(), user_id=post.author_id, from_user_id=user.id, type="reaction", target_type="post", target_id=post_id, body=f"{user.display_name} reacted {body.emoji} to your post"))
     like_count = int((await db.scalar(select(func.count(PostLike.id)).where(PostLike.post_id == post_id))) or 0)
     reactions = (await db.scalars(select(PostLike).where(PostLike.post_id == post_id))).all()
     my_like = await db.scalar(select(PostLike).where(PostLike.post_id == post_id, PostLike.user_id == user.id))
@@ -312,6 +313,7 @@ async def add_comment(
             "android": {"notification": {"channel_id": "messages"}},
             "data": {"type": "post.commented", "post_id": post_id, "user_id": user.id},
         })
+        db.add(Notification(id=new_id(), user_id=post.author_id, from_user_id=user.id, type="comment", target_type="post", target_id=post_id, body=f"{user.display_name} commented on your post"))
     return await _comment_view(db, comment)
 
 
@@ -381,6 +383,7 @@ async def share_post(
                 "android": {"notification": {"channel_id": "messages"}},
                 "data": {"type": "post.shared", "post_id": post_id, "user_id": user.id},
             })
+            db.add(Notification(id=new_id(), user_id=post.author_id, from_user_id=user.id, type="share", target_type="post", target_id=post_id, body=f"{user.display_name} shared your post"))
     count = int((await db.scalar(select(func.count(PostShare.id)).where(PostShare.post_id == post_id))) or 0)
     my_shared = await db.scalar(select(PostShare).where(PostShare.post_id == post_id, PostShare.user_id == user.id))
     return ShareResponse(share_count=count, my_shared=bool(my_shared))
@@ -726,6 +729,7 @@ async def toggle_follow(
     else:
         follow = Follow(id=new_id(), follower_id=user.id, following_id=user_id)
         db.add(follow)
+        db.add(Notification(id=new_id(), user_id=user_id, from_user_id=user.id, type="follow", target_type="user", target_id=user.id, body=f"{user.display_name} started following you"))
         await db.commit()
     fc = int((await db.scalar(select(func.count(Follow.id)).where(Follow.following_id == user_id))) or 0)
     fgc = int((await db.scalar(select(func.count(Follow.id)).where(Follow.follower_id == user_id))) or 0)

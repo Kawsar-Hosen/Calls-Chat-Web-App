@@ -7,7 +7,7 @@ import { api } from '@/api';
 import { useAuth } from '@/auth';
 import { PostCard } from '@/components/PostCard';
 import { useI18n } from '@/i18n';
-import { useTheme } from '@/theme';
+import { useTheme, useFont } from '@/theme';
 import type { Post, PostComment } from '@/types';
 import { Avatar } from '@/ui';
 
@@ -30,13 +30,14 @@ const CommentItem = memo(function CommentItem({ comment, colors, t, onDelete, on
   onReact: (commentId: string, emoji: string) => void;
 }) {
   const { user } = useAuth();
+  const { fontFamily } = useFont();
 
   return (
     <View style={[styles.commentRow, { borderBottomColor: colors.border }]}>
       <Avatar name={comment.author.displayName} uri={comment.author.avatarUrl} size={36} online={comment.author.isOnline} />
       <View style={styles.commentBody}>
         <View style={styles.commentHeader}>
-          <Text style={[styles.commentAuthor, { color: colors.text }]} numberOfLines={1}>{comment.author.displayName}</Text>
+          <Text style={[styles.commentAuthor, { color: colors.text, fontFamily }]} numberOfLines={1}>{comment.author.displayName}</Text>
           <Text style={[styles.commentTime, { color: colors.faint }]}>{timeAgo(comment.createdAt)}</Text>
         </View>
         {comment.parentId ? (
@@ -45,7 +46,7 @@ const CommentItem = memo(function CommentItem({ comment, colors, t, onDelete, on
             <Text style={[styles.replyText, { color: colors.accent }]}>{t('comment')}</Text>
           </View>
         ) : null}
-        <Text style={[styles.commentContent, { color: colors.text }]}>{comment.content}</Text>
+        <Text style={[styles.commentContent, { color: colors.text, fontFamily }]}>{comment.content}</Text>
         <View style={styles.commentActions}>
           <View style={styles.reactionRow}>
             {['👍', '❤️', '😂'].map((emoji) => (
@@ -74,6 +75,7 @@ export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { colors } = useTheme();
+  const { fontFamily } = useFont();
   const { t } = useI18n();
   const router = useRouter();
   const [post, setPost] = useState<Post | null>(null);

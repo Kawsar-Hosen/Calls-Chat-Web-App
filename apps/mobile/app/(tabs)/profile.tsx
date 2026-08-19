@@ -9,6 +9,8 @@ import { useSocket } from '@/socket';
 import { useTheme } from '@/theme';
 import { useI18n } from '@/i18n';
 import { Avatar, Skeleton } from '@/ui';
+import { EmojiText } from '@/emoji';
+import { useFont } from '@/theme';
 import { PostCard } from '@/components/PostCard';
 import type { Post, ProfileMediaItem, SocialLink, StoryHighlight, UserProfile } from '@/types';
 
@@ -34,6 +36,7 @@ export default function ProfileScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const { user: me } = useAuth();
   const { colors } = useTheme();
+  const { fontFamily } = useFont();
   const { connected } = useSocket();
   const { t } = useI18n();
   const router = useRouter();
@@ -140,8 +143,8 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.infoSection}>
-          <Text style={[styles.name, { color: colors.text }]}>{user.displayName}</Text>
-          <Text style={[styles.username, { color: colors.muted }]}>@{user.username}</Text>
+          <Text style={[styles.name, { color: colors.text, fontFamily }]}>{user.displayName}</Text>
+          <Text style={[styles.username, { color: colors.muted, fontFamily }]}>@{user.username}</Text>
 
           {user.customStatus ? (
             <View style={[styles.statusBadge, { backgroundColor: accent + '18' }]}>
@@ -150,7 +153,7 @@ export default function ProfileScreen() {
           ) : null}
 
           {user.bio ? (
-            <Text style={[styles.bio, { color: colors.text }]}>{user.bio}</Text>
+            <Text style={[styles.bio, { color: colors.text }]}><EmojiText text={user.bio} size={14} /></Text>
           ) : null}
 
           <View style={styles.infoRow}>
@@ -371,7 +374,7 @@ const styles = StyleSheet.create({
   coverPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   coverGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 40 },
   avatarRow: { alignItems: 'center', marginTop: -52 },
-  avatarRing: { width: 104, height: 104, borderRadius: 52, borderWidth: 3, padding: 2 },
+  avatarRing: { width: 102, height: 102, borderRadius: 51, borderWidth: 3 },
   infoSection: { alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, gap: 4 },
   name: { fontSize: 22, fontWeight: '900', textAlign: 'center' },
   username: { fontSize: 14, fontWeight: '500' },

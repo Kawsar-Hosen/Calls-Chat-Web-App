@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_android_client_id: str = ""
     google_ios_client_id: str = ""
+    telegram_bot_token: str = ""
+    facebook_app_id: str = ""
+    facebook_client_secret: str = ""
 
     @field_validator("cors_origins", mode="before")
     @classmethod

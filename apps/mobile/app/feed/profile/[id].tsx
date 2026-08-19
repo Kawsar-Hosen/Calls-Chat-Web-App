@@ -1,14 +1,15 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import { useAuth } from '@/auth';
-import { useTheme } from '@/theme';
+import { useTheme, useFont } from '@/theme';
 import { useI18n } from '@/i18n';
 import type { Post, SocialLink, UserProfile } from '@/types';
 import { Avatar } from '@/ui';
+import { EmojiText } from '@/emoji';
 import { PostCard } from '@/components/PostCard';
 
 const SOCIAL_PLATFORMS = [
@@ -40,10 +41,14 @@ function formatDate(d: string | null) {
   return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+const COVER_H = 180;
+const AVATAR_SIZE = 96;
+
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user: me } = useAuth();
   const { colors } = useTheme();
+  const { fontFamily } = useFont();
   const { t } = useI18n();
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -55,6 +60,7 @@ export default function UserProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [msgLoading, setMsgLoading] = useState(false);
   const profileRef = useRef(profile);
   profileRef.current = profile;
 
@@ -97,6 +103,16 @@ export default function UserProfileScreen() {
     } catch { Alert.alert('Error', 'Could not update follow'); } finally { setFollowLoading(false); }
   }, [followLoading]);
 
+  const openChat = useCallback(async () => {
+    const p = profileRef.current;
+    if (!p || msgLoading) return;
+    setMsgLoading(true);
+    try {
+      const conversationId = await api.startDirectChat(p.user.id);
+      router.push({ pathname: '/chat/[id]', params: { id: conversationId, name: p.user.displayName, username: p.user.username, peerId: p.user.id, avatarUrl: p.user.avatarUrl ?? '' } });
+    } catch { Alert.alert('Error', 'Could not start chat'); } finally { setMsgLoading(false); }
+  }, [msgLoading, router]);
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
@@ -132,110 +148,147 @@ export default function UserProfileScreen() {
         renderItem={({ item }) => <PostCard post={item} onRefresh={onRefresh} />}
         ListHeaderComponent={
           <View>
-            {u.coverUrl ? (
-              <Image source={{ uri: u.coverUrl }} style={styles.coverImage} />
-            ) : null}
+            {/* Cover photo with gradient overlay */}
+            <View style={styles.coverWrap}>
+              {u.coverUrl ? (
+                <Image source={{ uri: u.coverUrl }} style={styles.coverImage} />
+              ) : (
+                <View style={[styles.coverPlaceholder, { backgroundColor: accent + '12' }]}>
+                  <MaterialCommunityIcons name="image-outline" size={36} color={colors.faint} />
+                </View>
+              )}
+              <View style={styles.coverFade} />
+            </View>
 
-            <View style={styles.profileCard}>
-              <View style={[styles.avatarRing, { borderColor: accent }]}>
-                <Avatar name={u.displayName} uri={u.avatarUrl} size={80} online={u.isOnline} />
+            {/* Avatar overlapping cover */}
+            <View style={styles.avatarWrap}>
+              <View style={[styles.avatarRing, { borderColor: accent, backgroundColor: colors.background }]}>
+                <Avatar name={u.displayName} uri={u.avatarUrl} size={AVATAR_SIZE} online={u.isOnline} />
+              </View>
+              {u.isOnline && <View style={[styles.onlineDot, { backgroundColor: '#22C55E', borderColor: colors.background }]} />}
+            </View>
+
+            {/* Profile info card */}
+            <View style={[styles.infoCard, { backgroundColor: colors.background }]}>
+              <Text style={[styles.displayName, { color: colors.text, fontFamily }]}>{u.displayName}</Text>
+              <Text style={[styles.username, { color: colors.muted, fontFamily }]}>@{u.username}</Text>
+
+              {u.customStatus ? (
+                <View style={[styles.statusBadge, { backgroundColor: accent + '15' }]}>
+                  <Text style={[styles.statusText, { color: accent }]} numberOfLines={2}>{u.customStatus}</Text>
+                </View>
+              ) : null}
+
+              {u.bio ? (
+                <View style={styles.bioWrap}>
+                  <Text style={[styles.bio, { color: colors.text, fontFamily }]}><EmojiText text={u.bio} size={14} /></Text>
+                </View>
+              ) : null}
+
+              {/* Info pills */}
+              <View style={styles.pillsRow}>
+                {u.location ? (
+                  <View style={[styles.pill, { backgroundColor: colors.elevated }]}>
+                    <MaterialCommunityIcons name="map-marker-outline" size={13} color={colors.muted} />
+                    <Text numberOfLines={1} style={[styles.pillText, { color: colors.muted }]}>{u.location}</Text>
+                  </View>
+                ) : null}
+                {u.website ? (
+                  <Pressable onPress={() => Linking.openURL(u.website!.startsWith('http') ? u.website! : `https://${u.website}`).catch(() => {})} style={[styles.pill, { backgroundColor: colors.elevated }]}>
+                    <MaterialCommunityIcons name="link-variant" size={13} color={accent} />
+                    <Text numberOfLines={1} style={[styles.pillText, { color: accent }]}>{u.website}</Text>
+                  </Pressable>
+                ) : null}
               </View>
 
-              <View style={styles.statsRow}>
+              {/* Stats row */}
+              <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
                 <Pressable style={styles.statItem} onPress={() => router.push({ pathname: '/feed/followers/[id]' as any, params: { id: u.id, tab: 'followers' } })}>
-                  <Text style={[styles.statNum, { color: accent }]}>{formatCount(profile.followerCount)}</Text>
+                  <Text style={[styles.statNum, { color: colors.text }]}>{formatCount(profile.followerCount)}</Text>
                   <Text style={[styles.statLabel, { color: colors.muted }]}>{t('followers')}</Text>
                 </Pressable>
+                <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
                 <Pressable style={styles.statItem} onPress={() => router.push({ pathname: '/feed/followers/[id]' as any, params: { id: u.id, tab: 'following' } })}>
-                  <Text style={[styles.statNum, { color: accent }]}>{formatCount(profile.followingCount)}</Text>
+                  <Text style={[styles.statNum, { color: colors.text }]}>{formatCount(profile.followingCount)}</Text>
                   <Text style={[styles.statLabel, { color: colors.muted }]}>{t('following')}</Text>
                 </Pressable>
+                <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
                 <View style={styles.statItem}>
-                  <Text style={[styles.statNum, { color: accent }]}>{formatCount(profile.postCount)}</Text>
+                  <Text style={[styles.statNum, { color: colors.text }]}>{formatCount(profile.postCount)}</Text>
                   <Text style={[styles.statLabel, { color: colors.muted }]}>{t('posts')}</Text>
                 </View>
               </View>
 
-              <Text style={[styles.displayName, { color: colors.text }]}>{u.displayName}</Text>
-              <Text style={[styles.username, { color: colors.muted }]}>@{u.username}</Text>
-
-              {u.customStatus ? (
-                <View style={[styles.statusBadge, { backgroundColor: accent + '18' }]}>
-                  <Text style={[styles.statusText, { color: accent }]}>{u.customStatus}</Text>
-                </View>
-              ) : null}
-
-              {u.bio ? <Text style={[styles.bio, { color: colors.text }]}>{u.bio}</Text> : null}
-
-              <View style={styles.infoRow}>
-                {u.location ? (
-                  <View style={styles.infoItem}>
-                    <MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.muted} />
-                    <Text numberOfLines={1} style={[styles.infoText, { color: colors.muted }]}>{u.location}</Text>
-                  </View>
-                ) : null}
-                {u.website ? (
-                  <View style={styles.infoItem}>
-                    <MaterialCommunityIcons name="link-variant" size={14} color={colors.muted} />
-                    <Text numberOfLines={1} style={[styles.infoText, { color: accent }]}>{u.website}</Text>
-                  </View>
-                ) : null}
-              </View>
-
+              {/* Action buttons */}
               {!profile.isSelf ? (
                 <View style={styles.actionRow}>
                   <Pressable
                     onPress={toggleFollow}
                     disabled={followLoading}
-                    style={[styles.followBtn, { backgroundColor: profile.isFollowing ? colors.elevated : accent, borderColor: profile.isFollowing ? colors.border : accent }]}
+                    style={({ pressed }) => [styles.followBtn, { backgroundColor: profile.isFollowing ? colors.elevated : accent, borderColor: profile.isFollowing ? colors.border : accent, opacity: pressed ? 0.82 : 1 }]}
                   >
                     {followLoading ? (
                       <ActivityIndicator size="small" color={profile.isFollowing ? colors.text : '#FFF'} />
                     ) : (
                       <>
-                        <MaterialCommunityIcons name={profile.isFollowing ? 'account-check' : 'account-plus'} size={18} color={profile.isFollowing ? colors.text : '#FFF'} />
+                        <MaterialCommunityIcons name={profile.isFollowing ? 'account-check' : 'account-plus'} size={17} color={profile.isFollowing ? colors.text : '#FFF'} />
                         <Text style={[styles.followBtnText, { color: profile.isFollowing ? colors.text : '#FFF' }]}>
                           {profile.isFollowing ? t('following') : t('follow')}
                         </Text>
                       </>
                     )}
                   </Pressable>
-                  <Pressable onPress={() => {}} style={[styles.msgBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <MaterialCommunityIcons name="message-outline" size={18} color={colors.text} />
+                  <Pressable
+                    onPress={() => void openChat()}
+                    disabled={msgLoading}
+                    style={({ pressed }) => [styles.msgBtn, { backgroundColor: accent + '12', borderColor: accent + '30', opacity: msgLoading ? 0.5 : pressed ? 0.8 : 1 }]}
+                  >
+                    {msgLoading ? <ActivityIndicator size="small" color={accent} /> : <MaterialCommunityIcons name="message-text-outline" size={18} color={accent} />}
                   </Pressable>
                 </View>
               ) : null}
             </View>
 
-            <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
+            {/* Tabs */}
+            <View style={[styles.tabBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
               {(['posts', 'about'] as Tab[]).map((t2) => (
-                <Pressable key={t2} onPress={() => setTab(t2)} style={[styles.tabItem, tab === t2 && { borderBottomColor: accent, borderBottomWidth: 2 }]}>
+                <Pressable key={t2} onPress={() => setTab(t2)} style={[styles.tabItem, tab === t2 && { borderBottomColor: accent, borderBottomWidth: 2.5 }]}>
                   <MaterialCommunityIcons name={t2 === 'posts' ? 'newspaper-variant-outline' : 'information-outline'} size={20} color={tab === t2 ? accent : colors.muted} />
+                  <Text style={[styles.tabLabel, { color: tab === t2 ? accent : colors.muted, fontWeight: tab === t2 ? '800' : '600' }]}>{t2 === 'posts' ? t('posts') : 'About'}</Text>
                 </Pressable>
               ))}
             </View>
 
             {tab === 'about' && (
               <View style={styles.aboutSection}>
-                {socialLinks.length > 0 ? socialLinks.map((link) => {
-                  const platform = SOCIAL_PLATFORMS.find((p) => p.id === link.platform);
-                  return (
-                    <Pressable key={link.id} onPress={() => Linking.openURL(link.url).catch(() => {})} style={({ pressed }) => [aboutStyles.row, { borderBottomColor: colors.border, opacity: pressed ? 0.7 : 1 }]}>
-                      <View style={[aboutStyles.iconWrap, { backgroundColor: (platform?.color || accent) + '18' }]}>
-                        <MaterialCommunityIcons name={platform?.icon || 'link'} size={18} color={platform?.color || accent} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[aboutStyles.label, { color: colors.muted }]}>{platform?.label || link.platform}</Text>
-                        <Text numberOfLines={1} style={[aboutStyles.value, { color: accent }]}>@{link.username}</Text>
-                      </View>
-                      <MaterialCommunityIcons name="open-in-new" size={14} color={colors.faint} />
-                    </Pressable>
-                  );
-                }) : null}
-                <AboutRow icon="calendar" label={t('joined')} value={formatDate((u as any).createdAt || null)} colors={colors} accent={accent} />
-                {u.location ? <AboutRow icon="map-marker" label={t('location')} value={u.location} colors={colors} accent={accent} /> : null}
-                {u.website ? <AboutRow icon="link" label={t('website')} value={u.website} colors={colors} accent={accent} /> : null}
-                {u.dateOfBirth ? <AboutRow icon="cake" label={t('birthday')} value={u.dateOfBirth} colors={colors} accent={accent} /> : null}
+                {socialLinks.length > 0 ? (
+                  <View style={[styles.aboutGroup, { backgroundColor: colors.surface }]}>
+                    <Text style={[styles.aboutGroupTitle, { color: colors.muted }]}>Social Links</Text>
+                    {socialLinks.map((link) => {
+                      const platform = SOCIAL_PLATFORMS.find((p) => p.id === link.platform);
+                      return (
+                        <Pressable key={link.id} onPress={() => Linking.openURL(link.url).catch(() => {})} style={({ pressed }) => [aboutStyles.row, { borderBottomColor: colors.border, opacity: pressed ? 0.7 : 1 }]}>
+                          <View style={[aboutStyles.iconWrap, { backgroundColor: (platform?.color || accent) + '18' }]}>
+                            <MaterialCommunityIcons name={platform?.icon || 'link'} size={18} color={platform?.color || accent} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[aboutStyles.label, { color: colors.muted }]}>{platform?.label || link.platform}</Text>
+                            <Text numberOfLines={1} style={[aboutStyles.value, { color: accent }]}>@{link.username}</Text>
+                          </View>
+                          <MaterialCommunityIcons name="open-in-new" size={14} color={colors.faint} />
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+
+                <View style={[styles.aboutGroup, { backgroundColor: colors.surface }]}>
+                  <Text style={[styles.aboutGroupTitle, { color: colors.muted }]}>Details</Text>
+                  <AboutRow icon="calendar" label={t('joined')} value={formatDate((u as any).createdAt || null)} colors={colors} accent={accent} />
+                  {u.location ? <AboutRow icon="map-marker" label={t('location')} value={u.location} colors={colors} accent={accent} /> : null}
+                  {u.website ? <AboutRow icon="link" label={t('website')} value={u.website} colors={colors} accent={accent} /> : null}
+                  {u.dateOfBirth ? <AboutRow icon="cake" label={t('birthday')} value={u.dateOfBirth} colors={colors} accent={accent} /> : null}
+                </View>
               </View>
             )}
           </View>
@@ -278,28 +331,47 @@ const styles = StyleSheet.create({
   header: { height: 56, borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center' },
   headerBtn: { paddingHorizontal: 8, height: 42, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, fontSize: 16, fontWeight: '800', textAlign: 'center' },
-  coverImage: { width: '100%', height: 140, resizeMode: 'cover' },
-  profileCard: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, alignItems: 'center' },
-  avatarRing: { width: 86, height: 86, borderRadius: 43, borderWidth: 3, padding: 2 },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 14 },
-  statItem: { alignItems: 'center' },
+
+  coverWrap: { height: COVER_H, width: '100%', position: 'relative' },
+  coverImage: { width: '100%', height: COVER_H, resizeMode: 'cover' },
+  coverPlaceholder: { width: '100%', height: COVER_H, alignItems: 'center', justifyContent: 'center' },
+  coverFade: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 60, backgroundColor: 'transparent' },
+
+  avatarWrap: { alignItems: 'center', marginTop: -AVATAR_SIZE / 2 + 10 },
+  avatarRing: { width: AVATAR_SIZE + 8, height: AVATAR_SIZE + 8, borderRadius: (AVATAR_SIZE + 8) / 2, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
+  onlineDot: { position: 'absolute', bottom: 4, right: '33%', width: 16, height: 16, borderRadius: 8, borderWidth: 2.5 },
+
+  infoCard: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 0, alignItems: 'center' },
+  displayName: { fontSize: 22, fontWeight: '800', letterSpacing: -0.4 },
+  username: { fontSize: 14, fontWeight: '500', marginTop: 2 },
+  statusBadge: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 14, marginTop: 8, maxWidth: '90%' },
+  statusText: { fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  bioWrap: { marginTop: 10, paddingHorizontal: 4 },
+  bio: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
+
+  pillsRow: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap', justifyContent: 'center' },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
+  pillText: { fontSize: 12, fontWeight: '600' },
+
+  statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%', marginTop: 16, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, gap: 0 },
+  statItem: { alignItems: 'center', flex: 1 },
   statNum: { fontSize: 18, fontWeight: '800' },
   statLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
-  displayName: { fontSize: 20, fontWeight: '800', marginTop: 14, textAlign: 'center' },
-  username: { fontSize: 13, fontWeight: '500', marginTop: 2, textAlign: 'center' },
-  statusBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, marginTop: 6 },
-  statusText: { fontSize: 13, fontWeight: '600' },
-  bio: { fontSize: 14, lineHeight: 20, marginTop: 8, textAlign: 'center', paddingHorizontal: 10 },
-  infoRow: { flexDirection: 'row', gap: 16, marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' },
-  infoItem: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: 160 },
-  infoText: { fontSize: 13, fontWeight: '500', flexShrink: 1 },
-  actionRow: { flexDirection: 'row', gap: 10, marginTop: 14, width: '100%', paddingHorizontal: 20 },
-  followBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, borderRadius: 12, borderWidth: 1 },
+  statDivider: { width: 1, height: 28, borderRadius: 0.5 },
+
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: 16, width: '100%' },
+  followBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: 14, borderWidth: 1 },
   followBtnText: { fontSize: 15, fontWeight: '700' },
-  msgBtn: { width: 48, height: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  tabBar: { flexDirection: 'row', borderBottomWidth: 1, marginTop: 12 },
-  tabItem: { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  aboutSection: { paddingTop: 8 },
+  msgBtn: { width: 50, height: 46, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+
+  tabBar: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, marginTop: 12 },
+  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13 },
+  tabLabel: { fontSize: 13 },
+
+  aboutSection: { paddingTop: 12, paddingBottom: 40, gap: 12 },
+  aboutGroup: { borderRadius: 0, paddingBottom: 4 },
+  aboutGroupTitle: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 },
+
   listContent: { paddingBottom: 40 },
   empty: { paddingVertical: 60, alignItems: 'center' },
   emptyText: { fontSize: 14, fontWeight: '500' },

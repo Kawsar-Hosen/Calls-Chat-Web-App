@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import { useAuth } from '@/auth';
 import { useSocket } from '@/socket';
-import { useTheme } from '@/theme';
+import { useTheme, useFont } from '@/theme';
 import type { Conversation, Message, SocketEvent, User } from '@/types';
 import { Avatar, SkeletonList } from '@/ui';
 import { useI18n } from '@/i18n';
@@ -47,6 +47,7 @@ function previewMeta(message: Message): { icon?: React.ComponentProps<typeof Mat
 export default function ConversationsScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const { fontFamily } = useFont();
   const { t, isRTL } = useI18n();
   const { subscribe } = useSocket();
   const router = useRouter();
@@ -197,7 +198,7 @@ export default function ConversationsScreen() {
                 {isGroup ? <GroupAvatar members={item.members} currentUserId={user.id} /> : <View style={styles.avatarWrap}><Avatar name={name} uri={otherMember(item, user)?.avatarUrl ?? null} size={54} online={otherMember(item, user)?.isOnline ?? false} /></View>}
                 <View style={styles.rowCopy}>
                   <View style={[styles.nameRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                    <Text numberOfLines={1} style={[styles.name, unread && styles.nameUnread, { color: colors.text, textAlign: isRTL ? 'right' : 'left' }]}>{name}</Text>
+                    <Text numberOfLines={1} style={[styles.name, unread && styles.nameUnread, { color: colors.text, textAlign: isRTL ? 'right' : 'left', fontFamily }]}>{name}</Text>
                     {meta.muted[item.id] ? <MaterialCommunityIcons name="bell-off-outline" size={13} color={colors.faint} /> : null}
                     {isGroup && item.group?.memberCount ? <Text style={[styles.memberCount, { color: colors.faint }]}>{item.group.memberCount} <MaterialCommunityIcons name="account-group-outline" size={11} color={colors.faint} /></Text> : null}
                   </View>

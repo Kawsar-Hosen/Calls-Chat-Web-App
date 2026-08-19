@@ -4,27 +4,32 @@ import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
-import { useI18n } from '@/i18n';
+import { useAuth } from '@/auth';
 import { useTheme } from '@/theme';
 
-export default function VerifyCodeScreen() {
-  const { email } = useLocalSearchParams<{ email: string }>();
-  const { t, isRTL } = useI18n();
+export default function VerifyTelegramScreen() {
+  const { phone } = useLocalSearchParams<{ phone: string }>();
   const { colors } = useTheme();
   const router = useRouter();
+  const { loginWithTelegram } = useAuth();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [resent, setResent] = useState(false);
   const inputs = useRef<(TextInput | null)[]>([]);
 
   const submit = async () => {
     if (code.length !== 6) return;
     setError(''); setLoading(true);
     try {
-      await api.verifyResetCode(email ?? '', code);
-      router.push({ pathname: '/(auth)/reset-password', params: { email: email ?? '', code } });
-    } catch (reason) { setError(reason instanceof Error ? reason.message : t('fpInvalidCode')); }
+      await loginWithTelegram(phone ?? '', code);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Invalid code'); }
     finally { setLoading(false); }
+  };
+
+  const resend = async () => {
+    setResent(false); setError('');
+    try { await api.telegramStart(phone ?? ''); setResent(true); } catch { setError('Could not resend'); }
   };
 
   const handleChange = useCallback((text: string, index: number) => {
@@ -47,14 +52,16 @@ export default function VerifyCodeScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <View style={styles.center}>
-            <View style={[styles.iconWrap, { backgroundColor: colors.accentSoft }]}>
-              <MaterialCommunityIcons name="shield-key-outline" size={32} color={colors.accent} />
+            <View style={[styles.iconWrap, { backgroundColor: '#2AABEE15' }]}>
+              <MaterialCommunityIcons name="shield-key-outline" size={32} color="#2AABEE" />
             </View>
-            <Text style={[styles.title, { color: colors.text }]}>{t('fpVerify')}</Text>
-            <Text style={[styles.subtitle, { color: colors.muted }]}>{t('fpSentDetail')}</Text>
-            <View style={[styles.emailBadge, { backgroundColor: colors.accentSoft, borderColor: colors.accent + '30' }]}>
-              <MaterialCommunityIcons name="email-check" size={16} color={colors.accent} />
-              <Text style={[styles.emailText, { color: colors.accent }]}>{email}</Text>
+            <Text style={[styles.title, { color: colors.text }]}>Enter Code</Text>
+            <Text style={[styles.subtitle, { color: colors.muted }]}>
+              We sent a 6-digit code to you via Telegram
+            </Text>
+            <View style={[styles.phoneBadge, { backgroundColor: '#2AABEE10', borderColor: '#2AABEE25' }]}>
+              <MaterialCommunityIcons name="phone" size={14} color="#2AABEE" />
+              <Text style={styles.phoneText}>{phone}</Text>
             </View>
           </View>
 
@@ -69,10 +76,14 @@ export default function VerifyCodeScreen() {
                 keyboardType="number-pad"
                 maxLength={1}
                 selectTextOnFocus
-                style={[styles.codeInput, { backgroundColor: colors.elevated, borderColor: code[i] ? colors.accent : colors.border, color: colors.text }]}
+                style={[styles.codeInput, { backgroundColor: colors.elevated, borderColor: code[i] ? '#2AABEE' : colors.border, color: colors.text }]}
               />
             ))}
           </View>
+
+          {resent ? (
+            <Text style={[styles.successText, { color: '#22C55E' }]}>Code resent!</Text>
+          ) : null}
 
           {error ? (
             <View style={[styles.errorBox, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
@@ -84,14 +95,19 @@ export default function VerifyCodeScreen() {
           <Pressable
             onPress={() => void submit()}
             disabled={code.length !== 6 || loading}
-            style={({ pressed }) => [styles.btn, { backgroundColor: code.length !== 6 ? colors.border : colors.accent, opacity: pressed ? 0.85 : 1 }]}
+            style={({ pressed }) => [styles.btn, { backgroundColor: code.length !== 6 ? colors.border : '#2AABEE', opacity: pressed ? 0.85 : 1 }]}
           >
-            {loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.btnText}>{t('fpVerify')}</Text>}
+            {loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.btnText}>Verify</Text>}
           </Pressable>
 
-          <Pressable onPress={() => { setCode(''); setError(''); inputs.current[0]?.focus(); }} style={styles.textBtn}>
-            <MaterialCommunityIcons name="refresh" size={16} color={colors.accent} />
-            <Text style={[styles.textBtnLabel, { color: colors.accent }]}>{t('fpResend')}</Text>
+          <Pressable onPress={() => void resend()} style={({ pressed }) => [styles.textBtn, { opacity: pressed ? 0.6 : 1 }]}>
+            <MaterialCommunityIcons name="refresh" size={16} color="#2AABEE" />
+            <Text style={styles.textBtnLabel}>Resend Code</Text>
+          </Pressable>
+
+          <Pressable onPress={() => router.back()} style={styles.backRow}>
+            <MaterialCommunityIcons name="arrow-left" size={18} color={colors.muted} />
+            <Text style={[styles.backLabel, { color: colors.muted }]}>Change Number</Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -106,14 +122,17 @@ const styles = StyleSheet.create({
   iconWrap: { width: 68, height: 68, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 24, fontWeight: '800', textAlign: 'center', letterSpacing: -0.5 },
   subtitle: { fontSize: 15, textAlign: 'center', lineHeight: 21, paddingHorizontal: 10 },
-  emailBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, marginTop: 4 },
-  emailText: { fontSize: 14, fontWeight: '700' },
+  phoneBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
+  phoneText: { color: '#2AABEE', fontSize: 14, fontWeight: '700' },
   codeRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 20 },
   codeInput: { width: 48, height: 56, borderWidth: 2, borderRadius: 14, textAlign: 'center', fontSize: 22, fontWeight: '800' },
+  successText: { fontSize: 13, fontWeight: '700', textAlign: 'center', marginBottom: 10 },
   errorBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
   errorText: { color: '#DC2626', fontSize: 13, fontWeight: '600', flex: 1 },
   btn: { width: '100%', height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   btnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   textBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12 },
-  textBtnLabel: { fontSize: 14, fontWeight: '700' },
+  textBtnLabel: { color: '#2AABEE', fontSize: 14, fontWeight: '700' },
+  backRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 8 },
+  backLabel: { fontSize: 14, fontWeight: '600' },
 });

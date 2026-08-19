@@ -28,9 +28,10 @@ class UserPublic(ORMModel):
 
 
 class UserMe(UserPublic):
-    email: str
+    email: str | None = None
     phone_code: str | None = None
     phone: str | None = None
+    facebook_id: str | None = None
     last_seen_visible: bool = True
     online_visible: bool = True
     who_can_message: str = "everyone"
@@ -38,6 +39,7 @@ class UserMe(UserPublic):
     read_receipts: bool = True
     typing_indicator: bool = True
     font_size: str = "default"
+    font_style: str = "system"
     chat_wallpaper: str | None = None
     created_at: datetime
 
@@ -64,6 +66,8 @@ class RegisterRequest(BaseModel):
     username: str = Field(pattern=r"^[a-zA-Z0-9_]{3,32}$")
     display_name: str = Field(min_length=1, max_length=80)
     password: str = Field(min_length=8, max_length=128)
+    date_of_birth: str | None = None
+    gender: str | None = None
     device_name: str = Field(default="Unknown device", max_length=120)
 
     @field_validator("email")
@@ -83,6 +87,11 @@ class LoginRequest(BaseModel):
 
 class GoogleAuthRequest(BaseModel):
     id_token: str = Field(min_length=20)
+    device_name: str = Field(default="Unknown device", max_length=120)
+
+
+class FacebookAuthRequest(BaseModel):
+    access_token: str = Field(min_length=10)
     device_name: str = Field(default="Unknown device", max_length=120)
 
 
@@ -121,6 +130,7 @@ class ProfileUpdate(BaseModel):
     read_receipts: bool | None = None
     typing_indicator: bool | None = None
     font_size: str | None = None
+    font_style: str | None = None
     chat_wallpaper: str | None = None
 
 
@@ -653,3 +663,19 @@ class ReportRequest(BaseModel):
     target_id: str | None = None
     reason: str
     details: str | None = None
+
+
+# ── Notifications ──────────────────────────────────────────────
+
+
+class NotificationView(BaseModel):
+    id: str
+    from_user_id: str | None = None
+    from_user_name: str | None = None
+    from_user_avatar: str | None = None
+    type: str
+    target_type: str | None = None
+    target_id: str | None = None
+    body: str
+    is_read: bool
+    created_at: datetime

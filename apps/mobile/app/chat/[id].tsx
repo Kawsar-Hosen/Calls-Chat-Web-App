@@ -12,7 +12,7 @@ import { api, mapGroup } from '@/api';
 import { useAuth } from '@/auth';
 import { useCallController } from '@/call-controller';
 import { useSocket } from '@/socket';
-import { useTheme } from '@/theme';
+import { useTheme, useFont } from '@/theme';
 import type { Group, Message, SocketEvent, User } from '@/types';
 
 function parseStoryLink(content: string | null): { authorId: string } | null {
@@ -473,7 +473,8 @@ export default function ChatScreen() {
   const themed = !!customization && customization.theme !== 'default';
   const activeTheme = themeById(customization?.theme ?? 'default');
   const density = densityById(customization?.density ?? DEFAULT_CUSTOMIZATION.density);
-  const fontFamily = customization ? bubbleFont(customization) : undefined;
+  const { fontFamily: globalFontFamily, scale } = useFont();
+  const fontFamily = customization ? bubbleFont(customization) : globalFontFamily;
   const hText = themed ? activeTheme.headerText : colors.text;
   const hBg = themed ? activeTheme.header : colors.surface;
   const typingWho = prefs.showTyping && peerTyping && peerTypingUser ? memberName(peerTypingUser) : null;
@@ -580,7 +581,7 @@ export default function ChatScreen() {
           {voiceUri ? <View style={[styles.recordingBar, { backgroundColor: themed ? 'rgba(255,255,255,0.12)' : colors.surface, borderColor: themed ? activeTheme.border : colors.border }]}><Text style={{ color: hText, fontWeight: '700' }}>{t('preview')}</Text><VoicePlayer uri={voiceUri} color={hText} /><Pressable onPress={() => setVoiceUri(null)}><Text style={{ color: hText }}>{t('cancel')}</Text></Pressable><Pressable disabled={sending} onPress={() => void sendVoice()}><Text style={{ color: themed ? activeTheme.accent : colors.accent, fontWeight: '800' }}>{t('send')}</Text></Pressable></View> : null}
           <View style={[styles.composer, { backgroundColor: themed ? 'rgba(255,255,255,0.16)' : colors.surface, borderColor: themed ? activeTheme.border : colors.border }]}>
             <Pressable accessibilityLabel="Attach camera, gallery, or document" onPress={() => groupAdminOnlyMedia ? showToast(t('onlyAdminsCanSendMedia')) : setAttachOpen(true)} style={styles.attach}><MaterialCommunityIcons name="plus-circle-outline" size={22} color={groupAdminOnlyMedia ? (themed ? activeTheme.time : colors.faint) : (themed ? activeTheme.headerText : colors.accent)} /></Pressable>
-            <TextInput value={draft} onChangeText={handleDraftChange} editable={!groupAdminOnlySend} placeholder={groupAdminOnlySend ? t('onlyAdminsCanSend') : t('writeMessage')} placeholderTextColor={themed ? activeTheme.time : colors.faint} multiline maxLength={10000} style={[styles.input, { color: hText, textAlign: isRTL ? 'right' : 'left', writingDirection: isRTL ? 'rtl' : 'ltr' }]} />
+            <TextInput value={draft} onChangeText={handleDraftChange} editable={!groupAdminOnlySend} placeholder={groupAdminOnlySend ? t('onlyAdminsCanSend') : t('writeMessage')} placeholderTextColor={themed ? activeTheme.time : colors.faint} multiline maxLength={10000} style={[styles.input, { color: hText, textAlign: isRTL ? 'right' : 'left', writingDirection: isRTL ? 'rtl' : 'ltr', fontFamily }]} />
             {!voiceUri ? <Pressable accessibilityLabel={recorderState.isRecording ? 'Stop recording' : 'Record voice message'} onPress={() => recorderState.isRecording ? void stopRecording() : groupAdminOnlyMedia ? showToast(t('onlyAdminsCanSendMedia')) : void startRecording()} style={styles.mic}><MaterialCommunityIcons name="microphone-outline" size={21} color={groupAdminOnlyMedia ? (themed ? activeTheme.time : colors.faint) : (themed ? activeTheme.headerText : colors.muted)} /></Pressable> : null}
             <Pressable accessibilityLabel="Emoji, GIF, or sticker" onPress={() => groupAdminOnlyMedia ? showToast(t('onlyAdminsCanSendMedia')) : setPickerOpen(true)} style={styles.mic}><MaterialCommunityIcons name="sticker-emoji" size={21} color={groupAdminOnlyMedia ? (themed ? activeTheme.time : colors.faint) : (themed ? activeTheme.headerText : colors.muted)} /></Pressable>
             <Pressable accessibilityLabel="Send message" disabled={!draft.trim() || sending || groupAdminOnlySend} onPress={() => void send()} style={({ pressed }) => [styles.send, { backgroundColor: colors.accent, opacity: !draft.trim() || sending || groupAdminOnlySend ? 0.45 : pressed ? 0.75 : 1 }]}>{sending ? <ActivityIndicator size="small" color={colors.accentText} /> : <MaterialCommunityIcons name="send" size={19} color={colors.accentText} />}</Pressable>

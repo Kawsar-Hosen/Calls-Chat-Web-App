@@ -29,8 +29,10 @@ class User(Base):
     location: Mapped[str | None] = mapped_column(String(120))
     website: Mapped[str | None] = mapped_column(String(200))
     date_of_birth: Mapped[str | None] = mapped_column(String(10))
+    gender: Mapped[str | None] = mapped_column(String(20))
     phone_code: Mapped[str | None] = mapped_column(String(8))
     phone: Mapped[str | None] = mapped_column(String(20))
+    facebook_id: Mapped[str | None] = mapped_column(String(30), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_online: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -41,6 +43,7 @@ class User(Base):
     read_receipts: Mapped[bool] = mapped_column(Boolean, default=True)
     typing_indicator: Mapped[bool] = mapped_column(Boolean, default=True)
     font_size: Mapped[str] = mapped_column(String(10), default="default")
+    font_style: Mapped[str] = mapped_column(String(30), default="system")
     chat_wallpaper: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -417,3 +420,25 @@ class Report(Base):
     reason: Mapped[str] = mapped_column(String(500))
     details: Mapped[str | None] = mapped_column(String(2000))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    from_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    type: Mapped[str] = mapped_column(String(30))
+    target_type: Mapped[str | None] = mapped_column(String(30))
+    target_id: Mapped[str | None] = mapped_column(String(36))
+    body: Mapped[str] = mapped_column(String(500))
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class TelegramCode(Base):
+    __tablename__ = "telegram_codes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    phone: Mapped[str] = mapped_column(String(20), index=True)
+    code: Mapped[str] = mapped_column(String(6))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

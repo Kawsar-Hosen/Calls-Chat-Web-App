@@ -4,7 +4,7 @@ import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'reac
 import { useRouter } from 'expo-router';
 import { api } from '@/api';
 import { useAuth } from '@/auth';
-import { useTheme } from '@/theme';
+import { useTheme, useFont } from '@/theme';
 import { useI18n } from '@/i18n';
 import type { Post } from '@/types';
 import { Avatar } from '@/ui';
@@ -58,6 +58,7 @@ function AnimatedReaction({ emoji, onDone }: { emoji: string; onDone: () => void
 export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post; onRefresh?: () => void }) {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const { fontFamily } = useFont();
   const { t } = useI18n();
   const router = useRouter();
   const [showReactions, setShowReactions] = useState(false);
@@ -134,7 +135,7 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
         </Pressable>
         <View style={styles.headerInfo}>
           <Pressable onPress={() => router.push({ pathname: '/feed/profile/[id]' as any, params: { id: post.author.id } })}>
-            <Text style={[styles.authorName, { color: colors.text }]}>{post.author.displayName}</Text>
+            <Text style={[styles.authorName, { color: colors.text, fontFamily }]}>{post.author.displayName}</Text>
           </Pressable>
           <View style={styles.metaRow}>
             <Text style={[styles.time, { color: colors.faint }]}>{timeAgo(post.createdAt)}</Text>
@@ -153,7 +154,7 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
 
       {displayContent ? (
         <View style={styles.contentWrap}>
-          <Text style={[styles.content, { color: colors.text }]}>{displayContent}</Text>
+          <Text style={[styles.content, { color: colors.text, fontFamily }]}>{displayContent}</Text>
           {isLong ? (
             <Pressable onPress={() => setExpanded(!expanded)}>
               <Text style={[styles.seeMore, { color: colors.accent }]}>{expanded ? t('seeLess') : t('seeMore')}</Text>

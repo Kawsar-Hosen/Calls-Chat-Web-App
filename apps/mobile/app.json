@@ -5,7 +5,7 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": ["xyteee", "com.googleusercontent.apps.940343114841-t8t2t558aqpo2q27rpsk5rt9qs2mgh65"],
+    "scheme": ["xyteee", "fb954847224308777", "com.googleusercontent.apps.940343114841-t8t2t558aqpo2q27rpsk5rt9qs2mgh65"],
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#0F1520",
     "ios": {
@@ -51,7 +51,7 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#0F1520"
+          "backgroundColor": "#FFFFFF"
         }
       ],
       "expo-web-browser"

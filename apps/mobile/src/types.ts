@@ -11,6 +11,7 @@ export interface User {
   location?: string | null;
   website?: string | null;
   dateOfBirth?: string | null;
+  gender?: string | null;
   isOnline: boolean;
   lastSeenAt: string | null;
   lastSeenVisible?: boolean;
@@ -20,9 +21,11 @@ export interface User {
   readReceipts?: boolean;
   typingIndicator?: boolean;
   fontSize?: string;
+  fontStyle?: string;
   chatWallpaper?: string | null;
   phoneCode?: string | null;
   phone?: string | null;
+  facebookId?: string | null;
   remark?: string | null;
   createdAt?: string;
 }
@@ -396,4 +399,22 @@ export interface NotificationPrefs {
   follows: boolean;
   mentions: boolean;
   groupActivity: boolean;
+}
+
+export interface AppNotification {
+  id: string;
+  fromUserId: string | null;
+  fromUserName: string | null;
+  fromUserAvatar: string | null;
+  type: string;
+  targetType: string | null;
+  targetId: string | null;
+  body: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface SearchResult {
+  users: UserSearchResult[];
+  posts: { id: string; body: string; authorId: string; createdAt: string }[];
 }

@@ -11,6 +11,7 @@ import { playSound } from '@/sounds';
 import { useTheme } from '@/theme';
 import type { UserSearchResult } from '@/types';
 import { Avatar } from '@/ui';
+import { EmojiText } from '@/emoji';
 
 export default function ContactInfoScreen() {
   const { id, name: initialName, username: initialUsername } = useLocalSearchParams<{ id: string; name?: string; username?: string }>();
@@ -130,7 +131,7 @@ export default function ContactInfoScreen() {
           <Text style={[styles.identityName, { color: colors.text }]}>{person.remark || person.displayName}</Text>
           <Text style={[styles.identityHandle, { color: colors.muted }]}>@{person.username}</Text>
           {(person.phoneCode || person.phone) ? <View style={[styles.phoneRow, { backgroundColor: colors.accentSoft }]}><MaterialCommunityIcons name="cellphone" size={13} color={colors.accent} /><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '800' }}>{person.phoneCode}{person.phone}</Text></View> : null}
-          {person.bio ? <Text style={[styles.identityBio, { color: colors.muted }]}>{person.bio}</Text> : null}
+          {person.bio ? <Text style={[styles.identityBio, { color: colors.muted }]}><EmojiText text={person.bio} size={12} /></Text> : null}
           <View style={[styles.statusPill, { backgroundColor: person.isBlocked ? colors.danger : colors.accentSoft }]}><MaterialCommunityIcons name={person.isBlocked ? 'shield-off-outline' : isFriend ? 'account-heart-outline' : 'account-outline'} size={12} color={person.isBlocked ? '#FFFFFF' : colors.accent} /><Text style={{ color: person.isBlocked ? '#FFFFFF' : colors.accent, fontSize: 11, fontWeight: '800' }}>{person.isBlocked ? t('blocked') : isFriend ? t('friend') : person.requestStatus ? person.requestStatus === 'outgoing' ? t('requestSent') : t('requestReceived') : t('stranger')}</Text></View>
         </View>
 
@@ -167,7 +168,7 @@ export default function ContactInfoScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1 }, header: { height: 56, borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }, iconButton: { width: 38, height: 42, alignItems: 'center', justifyContent: 'center' }, headerTitle: { fontSize: 16, fontWeight: '800' },
   content: { padding: 16, paddingBottom: 32 },
-  identity: { borderWidth: 1, borderRadius: 20, padding: 22, alignItems: 'center', gap: 5 }, avatarRing: { borderWidth: 2, borderRadius: 39, padding: 2 }, identityName: { fontSize: 19, fontWeight: '900', marginTop: 6 }, identityHandle: { fontSize: 13 }, phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, marginTop: 5 }, identityBio: { fontSize: 12, textAlign: 'center', marginTop: 5, lineHeight: 18 }, statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, marginTop: 12 },
+  identity: { borderWidth: 1, borderRadius: 20, padding: 22, alignItems: 'center', gap: 5 }, avatarRing: { borderWidth: 2, borderRadius: 37 }, identityName: { fontSize: 19, fontWeight: '900', marginTop: 6 }, identityHandle: { fontSize: 13 }, phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, marginTop: 5 }, identityBio: { fontSize: 12, textAlign: 'center', marginTop: 5, lineHeight: 18 }, statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, marginTop: 12 },
   error: { fontSize: 13, marginTop: 14 },
   actionBtn: { minHeight: 52, borderRadius: 14, marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   remarkCard: { borderWidth: 1, borderRadius: 16, marginTop: 22, padding: 14 }, sectionLabel: { fontSize: 10, fontWeight: '900', marginTop: 22, marginBottom: 9, letterSpacing: 1, textTransform: 'uppercase' }, remarkInputWrap: { minHeight: 46, borderWidth: 1, borderRadius: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 }, remarkInput: { flex: 1, fontSize: 15 }, saveBtn: { minHeight: 44, borderRadius: 12, marginTop: 8, alignItems: 'center', justifyContent: 'center' },

@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { api } from '@/api';
-import { useTheme } from '@/theme';
+import { useTheme, useFont } from '@/theme';
 import { useI18n } from '@/i18n';
 import { Avatar } from '@/ui';
 import type { PostComment } from '@/types';
@@ -37,6 +37,7 @@ interface CommentSheetProps {
 
 export function CommentSheet({ visible, postId, onClose, onCommentAdded }: CommentSheetProps) {
   const { colors } = useTheme();
+  const { fontFamily } = useFont();
   const { t } = useI18n();
   const [comments, setComments] = useState<PostComment[]>([]);
   const [loading, setLoading] = useState(false);
@@ -84,10 +85,10 @@ export function CommentSheet({ visible, postId, onClose, onCommentAdded }: Comme
       <Avatar name={item.author.displayName} uri={item.author.avatarUrl} size={32} />
       <View style={styles.commentBody}>
         <View style={styles.commentHeader}>
-          <Text style={[styles.commentAuthor, { color: colors.text }]}>{item.author.displayName}</Text>
+          <Text style={[styles.commentAuthor, { color: colors.text, fontFamily }]}>{item.author.displayName}</Text>
           <Text style={[styles.commentTime, { color: colors.faint }]}>{timeAgo(item.createdAt)}</Text>
         </View>
-        <Text style={[styles.commentContent, { color: colors.text }]}>{item.content}</Text>
+        <Text style={[styles.commentContent, { color: colors.text, fontFamily }]}>{item.content}</Text>
         {item.reactionCount && item.reactionCount > 0 ? (
           <View style={[styles.reactionBadge, { backgroundColor: colors.border }]}>
             <Text style={[styles.reactionBadgeText, { color: colors.muted }]}>{item.reactionCount}</Text>

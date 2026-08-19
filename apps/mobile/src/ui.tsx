@@ -21,7 +21,7 @@ export function Avatar({ name, uri, size = 46, online = false }: { name: string;
   return (
     <View style={{ width: size, height: size }}>
       <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: colors.elevated }]}> 
-        {uri ? <Image source={{ uri }} resizeMode="cover" style={{ width: size, height: size, borderRadius: size / 2 }} /> : <Text style={{ color: colors.text, fontWeight: '700', fontSize: size * 0.27 }}>{initials || '?'}</Text>}
+        {uri ? <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} /> : <Text style={{ color: colors.text, fontWeight: '700', fontSize: size * 0.27 }}>{initials || '?'}</Text>}
       </View>
       {online ? <View style={[styles.online, { backgroundColor: colors.success, borderColor: colors.surface }]} /> : null}
     </View>

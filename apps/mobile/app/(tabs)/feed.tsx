@@ -95,7 +95,13 @@ export default function FeedScreen() {
         <View style={styles.header}>
           <Image source={require('../../assets/header.png')} style={[styles.headerLogo, { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 }]} resizeMode="contain" />
           <View style={{ flex: 1 }} />
-          <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => [styles.settingsBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
+          <Pressable onPress={() => router.push('/search')} style={({ pressed }) => [styles.headerBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
+            <MaterialCommunityIcons name="magnify" size={22} color={colors.text} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/notifications')} style={({ pressed }) => [styles.headerBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
+            <MaterialCommunityIcons name="bell-outline" size={22} color={colors.text} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => [styles.headerBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
             <MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} />
           </Pressable>
         </View>
@@ -115,7 +121,13 @@ export default function FeedScreen() {
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <Image source={require('../../assets/header.png')} style={[styles.headerLogo, { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 }]} resizeMode="contain" />
           <View style={{ flex: 1 }} />
-          <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => [styles.settingsBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
+          <Pressable onPress={() => router.push('/search')} style={({ pressed }) => [styles.headerBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
+            <MaterialCommunityIcons name="magnify" size={22} color={colors.text} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/notifications')} style={({ pressed }) => [styles.headerBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
+            <MaterialCommunityIcons name="bell-outline" size={22} color={colors.text} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => [styles.headerBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
             <MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} />
           </Pressable>
         </View>
@@ -159,8 +171,8 @@ export default function FeedScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   header: { height: 56, paddingHorizontal: 14, paddingBottom: 2, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center' },
-  headerLogo: { width: 220, height: 56 },
-  settingsBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  headerLogo: { width: 150, height: 56 },
+  headerBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   sectionRow: { flexDirection: 'row', borderBottomWidth: 1 },
   sectionTab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
   sectionLabel: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },

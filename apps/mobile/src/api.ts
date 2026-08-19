@@ -1,7 +1,7 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as SecureStore from 'expo-secure-store';
 import { Image } from 'react-native';
-import type { Attachment, AuthResult, BookmarkResponse, CommentPage, Conversation, FollowListPage, FollowResponse, FriendRequest, Group, GroupApplication, GroupCustomization, GroupMember, GroupRole, GroupSettings, GroupSummary, LocationResult, Message, NotificationPrefs, Post, PostComment, PostPage, ProfileMediaPage, ReactResponse, ShareResponse, SocialLink, StoryGroup, StoryHighlight, StoryHighlightPage, StoryReactionResponse, StoryReplyItem, StoryViewerUser, Tokens, User, UserProfile, UserSearchResult } from './types';
+import type { Attachment, AuthResult, BookmarkResponse, CommentPage, Conversation, FollowListPage, FollowResponse, FriendRequest, Group, GroupApplication, GroupCustomization, GroupMember, GroupRole, GroupSettings, GroupSummary, LocationResult, Message, NotificationPrefs, Post, PostComment, PostPage, ProfileMediaPage, ReactResponse, SearchResult, ShareResponse, SocialLink, StoryGroup, StoryHighlight, StoryHighlightPage, StoryReactionResponse, StoryReplyItem, StoryViewerUser, Tokens, User, UserProfile, UserSearchResult, AppNotification } from './types';
 
 const DEFAULT_CUSTOMIZATION: GroupCustomization = { theme: 'default', font: 'default', wallpaper: 'plain', bubble: 'rounded', density: 'comfortable', radius: 8 };
 
@@ -49,10 +49,24 @@ function mapUser(raw: Json): User {
     whoCanSeePosts: raw.who_can_see_posts ? String(raw.who_can_see_posts) : 'public',
     readReceipts: raw.read_receipts !== false,
     typingIndicator: raw.typing_indicator !== false,
+    fontSize: raw.font_size ? String(raw.font_size) : 'default',
+    fontStyle: raw.font_style ? String(raw.font_style) : 'system',
     ...(raw.phone_code ? { phoneCode: String(raw.phone_code) } : {}),
     ...(raw.phone ? { phone: String(raw.phone) } : {}),
+    ...(raw.facebook_id ? { facebookId: String(raw.facebook_id) } : {}),
     ...(raw.remark != null ? { remark: String(raw.remark) } : {}),
     ...(raw.created_at ? { createdAt: String(raw.created_at) } : {}),
+  };
+}
+
+function mapUserSearch(raw: Json): UserSearchResult {
+  const user = mapUser(raw);
+  return {
+    ...user,
+    isFriend: raw.is_friend === true,
+    requestStatus: raw.request_status ? String(raw.request_status) as 'outgoing' | 'incoming' : null,
+    requestId: raw.request_id ? String(raw.request_id) : null,
+    isBlocked: raw.is_blocked === true,
   };
 }
 
@@ -266,10 +280,10 @@ export const api = {
     await saveTokens(result);
     return result;
   },
-  async register(data: { displayName: string; username: string; email: string; password: string }): Promise<AuthResult> {
+  async register(data: { displayName: string; username: string; email: string; password: string; dateOfBirth?: string; gender?: string }): Promise<AuthResult> {
     const raw = await request<Json>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ display_name: data.displayName, username: data.username, email: data.email, password: data.password, device_name: 'XYTEEE mobile' }),
+      body: JSON.stringify({ display_name: data.displayName, username: data.username, email: data.email, password: data.password, date_of_birth: data.dateOfBirth, gender: data.gender, device_name: 'XYTEEE mobile' }),
     });
     const result = { ...mapTokens(raw), user: mapUser(raw.user as Json) };
     await saveTokens(result);
@@ -280,6 +294,24 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ id_token: idToken, device_name: 'XYTEEE mobile' }),
     });
+    const result = { ...mapTokens(raw), user: mapUser(raw.user as Json) };
+    await saveTokens(result);
+    return result;
+  },
+  async facebookSignIn(accessToken: string): Promise<AuthResult> {
+    const raw = await request<Json>('/auth/facebook', {
+      method: 'POST',
+      body: JSON.stringify({ access_token: accessToken, device_name: 'XYTEEE mobile' }),
+    });
+    const result = { ...mapTokens(raw), user: mapUser(raw.user as Json) };
+    await saveTokens(result);
+    return result;
+  },
+  async telegramStart(phone: string): Promise<{ success: boolean; message: string }> {
+    return request('/auth/telegram/start', { method: 'POST', body: JSON.stringify({ phone }) });
+  },
+  async telegramVerify(phone: string, code: string): Promise<AuthResult> {
+    const raw = await request<Json>('/auth/telegram/verify', { method: 'POST', body: JSON.stringify({ phone, code }) });
     const result = { ...mapTokens(raw), user: mapUser(raw.user as Json) };
     await saveTokens(result);
     return result;
@@ -300,7 +332,7 @@ export const api = {
   async deleteAccount(password: string, code: string): Promise<void> {
     await request<void>('/account', { method: 'DELETE', body: JSON.stringify({ password, code }) });
   },
-  async updateProfile(data: { displayName?: string; username?: string; bio?: string; avatarUrl?: string | null; customStatus?: string | null; accentColor?: string | null; location?: string | null; website?: string | null; email?: string; phoneCode?: string | null; phone?: string | null; lastSeenVisible?: boolean; onlineVisible?: boolean; whoCanMessage?: string; whoCanSeePosts?: string; readReceipts?: boolean; typingIndicator?: boolean; fontSize?: string; chatWallpaper?: string | null }) {
+  async updateProfile(data: { displayName?: string; username?: string; bio?: string; avatarUrl?: string | null; customStatus?: string | null; accentColor?: string | null; location?: string | null; website?: string | null; email?: string; phoneCode?: string | null; phone?: string | null; lastSeenVisible?: boolean; onlineVisible?: boolean; whoCanMessage?: string; whoCanSeePosts?: string; readReceipts?: boolean; typingIndicator?: boolean; fontSize?: string; fontStyle?: string; chatWallpaper?: string | null }) {
     const body: Record<string, unknown> = {};
     if (data.displayName !== undefined) body.display_name = data.displayName;
     if (data.username !== undefined) body.username = data.username;
@@ -319,6 +351,7 @@ export const api = {
     if (data.readReceipts !== undefined) body.read_receipts = data.readReceipts;
     if (data.typingIndicator !== undefined) body.typing_indicator = data.typingIndicator;
     if (data.fontSize !== undefined) body.font_size = data.fontSize;
+    if (data.fontStyle !== undefined) body.font_style = data.fontStyle;
     if (data.chatWallpaper !== undefined) body.chat_wallpaper = data.chatWallpaper || null;
     return mapUser(await request<Json>('/profile', { method: 'PATCH', body: JSON.stringify(body) }));
   },
@@ -895,5 +928,58 @@ export const api = {
 
   async submitReport(type: string, targetId: string | null, reason: string, details?: string): Promise<void> {
     await request<Json>('/reports', { method: 'POST', body: JSON.stringify({ type, target_id: targetId, reason, details }) });
+  },
+
+  async getDataUsage(): Promise<{ posts: number; stories: number; messages: number; media: number; mediaBytes: number }> {
+    const raw = await request<Json>('/settings/data/usage');
+    return { posts: Number(raw.posts ?? 0), stories: Number(raw.stories ?? 0), messages: Number(raw.messages ?? 0), media: Number(raw.media ?? 0), mediaBytes: Number(raw.media_bytes ?? 0) };
+  },
+
+  async deleteAllPosts(): Promise<void> {
+    await request<void>('/settings/data/posts', { method: 'DELETE' });
+  },
+
+  async deleteAllStories(): Promise<void> {
+    await request<void>('/settings/data/stories', { method: 'DELETE' });
+  },
+
+  async deleteAllMessages(): Promise<void> {
+    await request<void>('/settings/data/messages', { method: 'DELETE' });
+  },
+
+  async deleteAllMedia(): Promise<void> {
+    await request<void>('/settings/data/media', { method: 'DELETE' });
+  },
+
+  async getNotifications(cursor?: string): Promise<{ items: AppNotification[]; nextCursor: string | null }> {
+    const params = new URLSearchParams();
+    if (cursor) params.set('cursor', cursor);
+    const qs = params.toString();
+    const raw = await request<Json[]>(`/notifications${qs ? `?${qs}` : ''}`);
+    return {
+      items: raw.map((r: any) => ({ id: r.id, fromUserId: r.from_user_id, fromUserName: r.from_user_name, fromUserAvatar: r.from_user_avatar, type: r.type, targetType: r.target_type, targetId: r.target_id, body: r.body, isRead: r.is_read, createdAt: r.created_at })),
+      nextCursor: raw.length >= 30 ? String((raw[raw.length - 1] as any).id ?? null) : null,
+    };
+  },
+
+  async getNotificationCount(): Promise<number> {
+    const raw = await request<Json>('/notifications/count');
+    return Number(raw.count ?? 0);
+  },
+
+  async markNotificationsRead(ids?: string[]): Promise<void> {
+    await request<void>('/notifications/read', { method: 'POST', body: JSON.stringify(ids ? { ids } : {}) });
+  },
+
+  async clearNotifications(): Promise<void> {
+    await request<void>('/notifications', { method: 'DELETE' });
+  },
+
+  async searchAll(query: string): Promise<SearchResult> {
+    const raw = await request<Json>(`/search?q=${encodeURIComponent(query)}`);
+    return {
+      users: ((raw as any).users ?? []).map((u: any) => mapUserSearch(u)),
+      posts: ((raw as any).posts ?? []).map((p: any) => ({ id: p.id, body: p.body, authorId: p.author_id, createdAt: p.created_at })),
+    };
   },
 };
