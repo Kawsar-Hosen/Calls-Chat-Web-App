@@ -31,23 +31,23 @@ export default function ReportsPage() {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex flex-wrap gap-2 sm:gap-3 mb-4 sm:mb-6">
         {['', 'pending', 'reviewed', 'resolved', 'dismissed'].map(s => (
-          <button key={s} onClick={() => { setStatus(s); load(s); }} className={`px-3 py-1.5 rounded-lg text-sm font-bold ${status === s ? 'bg-brand text-white' : 'bg-gray-200 text-gray-600'}`}>{s || 'All'}</button>
+          <button key={s} onClick={() => { setStatus(s); load(s); }} className={`px-3 py-2 rounded-lg text-sm font-bold min-h-[44px] ${status === s ? 'bg-brand text-white' : 'bg-gray-200 text-gray-600'}`}>{s || 'All'}</button>
         ))}
       </div>
-      <p className="text-sm text-gray-500 mb-4">{total} reports</p>
+      <p className="text-sm text-gray-500 mb-3">{total} reports</p>
       <div className="space-y-3">
-        {loading ? <p className="text-gray-400">Loading...</p> : reports.map(r => (
+        {loading ? <p className="text-gray-400 text-center py-8">Loading...</p> : reports.map(r => (
           <Link key={r.id} href={`/admin/reports/detail?id=${r.id}`} className="block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded ${STATUS_COLORS[r.status] || ''}`}>{r.status}</span>
-                <span className="text-xs text-gray-400 ml-2">{r.type}</span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-2 mb-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`text-xs font-bold px-2 py-1 rounded ${STATUS_COLORS[r.status] || ''}`}>{r.status}</span>
+                <span className="text-xs text-gray-400">{r.type}</span>
               </div>
               <span className="text-xs text-gray-400">{new Date(r.createdAt).toLocaleString()}</span>
             </div>
-            <p className="font-bold mt-2">{r.reason}</p>
+            <p className="font-bold">{r.reason}</p>
             <p className="text-sm text-gray-500">Reported by {r.reporterName || 'Unknown'}</p>
           </Link>
         ))}

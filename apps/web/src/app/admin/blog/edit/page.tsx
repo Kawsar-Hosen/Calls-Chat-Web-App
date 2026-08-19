@@ -42,23 +42,25 @@ export default function EditBlogPost() {
 
   return (
     <div className="max-w-3xl">
-      <h1 className="text-2xl font-extrabold mb-6">Edit Blog Post</h1>
+      <h1 className="text-xl sm:text-2xl font-extrabold mb-4 sm:mb-6">Edit Blog Post</h1>
       <div className="space-y-4">
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-brand outline-none text-lg font-bold" />
-        <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-gray-300">
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-brand outline-none text-lg font-bold min-h-[44px]" />
+        <select value={category} onChange={e => setCategory(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-300 min-h-[44px]">
           <option value="general">General</option>
           <option value="update">Update</option>
           <option value="policy">Policy</option>
           <option value="story">Story</option>
           <option value="news">News</option>
         </select>
-        <input value={excerpt} onChange={e => setExcerpt(e.target.value)} placeholder="Excerpt (optional)" className="w-full px-4 py-2.5 rounded-xl border border-gray-300" />
-        <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Content..." className="w-full px-4 py-3 rounded-xl border border-gray-300 min-h-[400px] font-mono text-sm" />
-        <div className="flex items-center gap-3">
+        <input value={excerpt} onChange={e => setExcerpt(e.target.value)} placeholder="Excerpt (optional)" className="w-full px-4 py-3 rounded-xl border border-gray-300 min-h-[44px]" />
+        <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Content..." className="w-full px-4 py-3 rounded-xl border border-gray-300 min-h-[250px] sm:min-h-[400px] font-mono text-sm" />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <span className="text-sm text-gray-500">Status: <strong>{status}</strong></span>
-          <button onClick={() => save()} disabled={saving} className="bg-gray-600 text-white px-4 py-2 rounded-xl font-bold text-sm disabled:opacity-50">Save</button>
-          {status !== 'published' && <button onClick={() => save('published')} disabled={saving} className="bg-brand text-white px-4 py-2 rounded-xl font-bold text-sm disabled:opacity-50">Publish</button>}
-          {status !== 'draft' && <button onClick={() => save('draft')} disabled={saving} className="bg-yellow-500 text-white px-4 py-2 rounded-xl font-bold text-sm disabled:opacity-50">Unpublish</button>}
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => save()} disabled={saving} className="bg-gray-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm disabled:opacity-50 min-h-[44px]">Save</button>
+            {status !== 'published' && <button onClick={() => save('published')} disabled={saving} className="bg-brand text-white px-4 py-2.5 rounded-xl font-bold text-sm disabled:opacity-50 min-h-[44px]">Publish</button>}
+            {status !== 'draft' && <button onClick={() => save('draft')} disabled={saving} className="bg-yellow-500 text-white px-4 py-2.5 rounded-xl font-bold text-sm disabled:opacity-50 min-h-[44px]">Unpublish</button>}
+          </div>
         </div>
       </div>
     </div>

@@ -25,12 +25,14 @@ export default function UsersPage() {
 
   return (
     <div>
-      <div className="flex items-center gap-4 mb-6">
-        <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && load()} placeholder="Search users..." className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 focus:border-brand outline-none" />
-        <button onClick={() => load()} className="bg-brand text-white px-4 py-2.5 rounded-xl font-bold">Search</button>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-4 sm:mb-6">
+        <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && load()} placeholder="Search users..." className="flex-1 px-4 py-3 rounded-xl border border-gray-300 focus:border-brand outline-none min-h-[44px]" />
+        <button onClick={() => load()} className="bg-brand text-white px-4 py-3 rounded-xl font-bold min-h-[44px]">Search</button>
       </div>
-      <p className="text-sm text-gray-500 mb-4">{total} users found</p>
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <p className="text-sm text-gray-500 mb-3">{total} users found</p>
+
+      {/* Desktop table */}
+      <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr><th className="px-4 py-3 text-left">User</th><th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Role</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Joined</th></tr>
@@ -49,9 +51,31 @@ export default function UsersPage() {
           </tbody>
         </table>
       </div>
-      <div className="flex justify-between mt-4">
-        <button disabled={page === 0} onClick={() => { setPage(p => Math.max(0, p - 30)); load(q, Math.max(0, page - 30)); }} className="px-4 py-2 bg-gray-200 rounded-lg disabled:opacity-50">Previous</button>
-        <button disabled={users.length < 30} onClick={() => { setPage(p => p + 30); load(q, page + 30); }} className="px-4 py-2 bg-gray-200 rounded-lg disabled:opacity-50">Next</button>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-3">
+        {loading ? <p className="text-gray-400 text-center py-8">Loading...</p> :
+          users.map(u => (
+            <Link key={u.id} href={`/admin/users/detail?id=${u.id}`} className="block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition">
+              <div className="flex items-center justify-between mb-2">
+                <div className="min-w-0">
+                  <p className="font-bold text-brand truncate">{u.displayName || u.username}</p>
+                  <p className="text-xs text-gray-400 truncate">@{u.username}</p>
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded shrink-0 ml-2 ${u.role === 'super_admin' ? 'bg-purple-100 text-purple-700' : u.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{u.role}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">{u.email || '—'}</span>
+                {u.isBanned ? <span className="text-xs font-bold text-red-600">Banned</span> : u.isVerified ? <span className="text-xs font-bold text-brand">Verified</span> : <span className="text-xs text-gray-400">Active</span>}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}</p>
+            </Link>
+          ))}
+      </div>
+
+      <div className="flex flex-col sm:flex-row justify-between gap-3 mt-4">
+        <button disabled={page === 0} onClick={() => { setPage(p => Math.max(0, p - 30)); load(q, Math.max(0, page - 30)); }} className="px-4 py-3 bg-gray-200 rounded-lg disabled:opacity-50 min-h-[44px] font-medium">Previous</button>
+        <button disabled={users.length < 30} onClick={() => { setPage(p => p + 30); load(q, page + 30); }} className="px-4 py-3 bg-gray-200 rounded-lg disabled:opacity-50 min-h-[44px] font-medium">Next</button>
       </div>
     </div>
   );

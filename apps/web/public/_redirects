@@ -3,3 +3,4 @@
 /admin/users/detail  /admin/users/detail  200
 /admin/reports/detail  /admin/reports/detail  200
 /admin/blog/edit  /admin/blog/edit  200
+/admin/verification/detail  /admin/verification/detail  200

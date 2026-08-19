@@ -51,32 +51,32 @@ export default function VerificationDetailPage() {
 
   return (
     <div className="max-w-2xl">
-      <button onClick={() => router.back()} className="text-brand text-sm font-bold mb-4">&larr; Back</button>
+      <button onClick={() => router.back()} className="text-brand text-sm font-bold mb-4 min-h-[44px] flex items-center">&larr; Back</button>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
-        <div className="flex items-center gap-4 mb-4">
-          {request.avatarUrl && <img src={request.avatarUrl} alt="" className="w-16 h-16 rounded-full" />}
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-extrabold">{request.displayName}</h1>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded ${CATEGORY_COLORS[request.category] || ''}`}>{request.category}</span>
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 mb-4">
+        <div className="flex items-center gap-3 sm:gap-4 mb-4">
+          {request.avatarUrl ? <img src={request.avatarUrl} alt="" className="w-12 h-12 sm:w-16 sm:h-16 rounded-full shrink-0" /> : <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-brand/20 flex items-center justify-center text-brand font-bold text-lg shrink-0">{(request.displayName || 'U')[0].toUpperCase()}</div>}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-lg sm:text-xl font-extrabold truncate">{request.displayName}</h1>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded shrink-0 ${CATEGORY_COLORS[request.category] || ''}`}>{request.category}</span>
             </div>
-            <p className="text-gray-500 text-sm">@{request.username} &middot; Requested as: {request.reqDisplayName}</p>
+            <p className="text-gray-500 text-sm truncate">@{request.username} · Requested as: {request.reqDisplayName}</p>
             <p className="text-xs text-gray-400 mt-1">{new Date(request.createdAt).toLocaleString()}</p>
           </div>
         </div>
 
         <div className="border-t border-gray-200 pt-4 mt-4">
           <h3 className="font-bold text-sm mb-2">Reason</h3>
-          <p className="text-gray-700 whitespace-pre-line bg-gray-50 rounded-lg p-4">{request.reason}</p>
+          <p className="text-gray-700 whitespace-pre-line bg-gray-50 rounded-lg p-4 text-sm">{request.reason}</p>
         </div>
 
         {docUrls.length > 0 && (
           <div className="border-t border-gray-200 pt-4 mt-4">
             <h3 className="font-bold text-sm mb-2">Documents ({docUrls.length})</h3>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {docUrls.map((url: string, i: number) => (
-                <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block bg-gray-50 rounded-lg p-3 text-xs text-brand hover:bg-gray-100 truncate">{url}</a>
+                <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block bg-gray-50 rounded-lg p-3 text-xs text-brand hover:bg-gray-100 truncate min-h-[44px]">{url}</a>
               ))}
             </div>
           </div>
@@ -84,12 +84,12 @@ export default function VerificationDetailPage() {
 
         <div className="border-t border-gray-200 pt-4 mt-4">
           <h3 className="font-bold text-sm mb-2">Admin Notes</h3>
-          <textarea value={adminNotes} onChange={e => setAdminNotes(e.target.value)} placeholder="Optional notes about this decision..." className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm" rows={3} />
+          <textarea value={adminNotes} onChange={e => setAdminNotes(e.target.value)} placeholder="Optional notes about this decision..." className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm min-h-[80px]" rows={3} />
         </div>
 
-        <div className="flex gap-3 mt-4">
-          <button onClick={() => updateStatus('approved')} disabled={saving || request.status === 'approved'} className="bg-green-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-green-600 disabled:opacity-50">Approve & Verify</button>
-          <button onClick={() => updateStatus('rejected')} disabled={saving || request.status === 'rejected'} className="bg-red-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-red-600 disabled:opacity-50">Reject</button>
+        <div className="flex flex-col sm:flex-row gap-3 mt-4">
+          <button onClick={() => updateStatus('approved')} disabled={saving || request.status === 'approved'} className="bg-green-500 text-white px-5 py-3 rounded-xl font-bold text-sm hover:bg-green-600 disabled:opacity-50 min-h-[44px]">Approve & Verify</button>
+          <button onClick={() => updateStatus('rejected')} disabled={saving || request.status === 'rejected'} className="bg-red-500 text-white px-5 py-3 rounded-xl font-bold text-sm hover:bg-red-600 disabled:opacity-50 min-h-[44px]">Reject</button>
         </div>
       </div>
     </div>

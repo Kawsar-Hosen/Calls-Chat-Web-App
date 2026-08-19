@@ -29,15 +29,15 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-extrabold mb-6">Dashboard</h1>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <h1 className="text-xl sm:text-2xl font-extrabold mb-4 sm:mb-6">Dashboard</h1>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {cards.map(c => (
-          <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-5">
-            <div className="flex items-center gap-3 mb-2">
-              <span className={`w-10 h-10 rounded-lg ${c.color} flex items-center justify-center text-white text-lg`}>{c.icon}</span>
-              <span className="text-sm text-gray-500">{c.label}</span>
+          <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-3 sm:p-5">
+            <div className="flex items-center gap-2 sm:gap-3 mb-2">
+              <span className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg ${c.color} flex items-center justify-center text-white text-sm sm:text-lg shrink-0`}>{c.icon}</span>
+              <span className="text-xs sm:text-sm text-gray-500 leading-tight">{c.label}</span>
             </div>
-            <p className="text-3xl font-extrabold">{c.value}</p>
+            <p className="text-xl sm:text-3xl font-extrabold">{c.value}</p>
           </div>
         ))}
       </div>

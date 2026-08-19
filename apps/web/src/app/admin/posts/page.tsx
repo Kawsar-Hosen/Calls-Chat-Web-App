@@ -28,18 +28,18 @@ export default function PostsPage() {
 
   return (
     <div>
-      <p className="text-sm text-gray-500 mb-4">{total} posts total</p>
+      <p className="text-sm text-gray-500 mb-3">{total} posts total</p>
       <div className="space-y-3">
-        {loading ? <p className="text-gray-400">Loading...</p> : posts.map(p => (
+        {loading ? <p className="text-gray-400 text-center py-8">Loading...</p> : posts.map(p => (
           <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-bold text-brand">@{p.authorUsername}</span>
-              <span className="text-xs text-gray-400">{new Date(p.createdAt).toLocaleString()}</span>
+              <span className="text-sm font-bold text-brand truncate mr-2">@{p.authorUsername}</span>
+              <span className="text-xs text-gray-400 shrink-0">{new Date(p.createdAt).toLocaleString()}</span>
             </div>
             <p className="text-sm text-gray-700 line-clamp-3">{p.content}</p>
             <div className="flex items-center justify-between mt-3">
-              <span className={`text-xs px-2 py-0.5 rounded ${p.visibility === 'public' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{p.visibility}</span>
-              <button onClick={() => deletePost(p.id)} className="text-xs text-red-500 font-bold hover:underline">Delete</button>
+              <span className={`text-xs px-2 py-1 rounded ${p.visibility === 'public' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{p.visibility}</span>
+              <button onClick={() => deletePost(p.id)} className="text-xs text-red-500 font-bold hover:underline min-h-[44px] px-2 -mr-2">Delete</button>
             </div>
           </div>
         ))}

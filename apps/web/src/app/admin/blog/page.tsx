@@ -23,22 +23,26 @@ export default function BlogAdminPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4 sm:mb-6">
         <p className="text-sm text-gray-500">{posts.length} posts</p>
-        <Link href="/admin/blog/new" className="bg-brand text-white px-4 py-2 rounded-xl font-bold text-sm">New Post</Link>
+        <Link href="/admin/blog/new" className="bg-brand text-white px-4 py-3 rounded-xl font-bold text-sm min-h-[44px] flex items-center">New Post</Link>
       </div>
       <div className="space-y-3">
-        {loading ? <p className="text-gray-400">Loading...</p> : posts.map(p => (
-          <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
-            <div>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded ${p.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{p.status}</span>
-              <span className="text-xs text-gray-400 ml-2">{p.category}</span>
-              <h3 className="font-bold mt-1">{p.title}</h3>
-              <p className="text-xs text-gray-400">{p.publishedAt ? new Date(p.publishedAt).toLocaleDateString() : 'Draft'}</p>
-            </div>
-            <div className="flex gap-2">
-              <Link href={`/admin/blog/edit?id=${p.id}`} className="text-brand text-sm font-bold">Edit</Link>
-              <button onClick={() => deletePost(p.id)} className="text-red-500 text-sm font-bold">Delete</button>
+        {loading ? <p className="text-gray-400 text-center py-8">Loading...</p> : posts.map(p => (
+          <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-xs font-bold px-2 py-1 rounded ${p.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{p.status}</span>
+                  <span className="text-xs text-gray-400">{p.category}</span>
+                </div>
+                <h3 className="font-bold mt-1 truncate">{p.title}</h3>
+                <p className="text-xs text-gray-400">{p.publishedAt ? new Date(p.publishedAt).toLocaleDateString() : 'Draft'}</p>
+              </div>
+              <div className="flex gap-3 shrink-0">
+                <Link href={`/admin/blog/edit?id=${p.id}`} className="text-brand text-sm font-bold min-h-[44px] flex items-center">Edit</Link>
+                <button onClick={() => deletePost(p.id)} className="text-red-500 text-sm font-bold min-h-[44px] flex items-center">Delete</button>
+              </div>
             </div>
           </div>
         ))}

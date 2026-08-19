@@ -33,32 +33,32 @@ export default function UserDetailPage() {
 
   return (
     <div className="max-w-2xl">
-      <button onClick={() => router.back()} className="text-brand text-sm font-bold mb-4">&larr; Back</button>
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center gap-4 mb-6">
-          {user.avatarUrl && <img src={user.avatarUrl} className="w-16 h-16 rounded-full" alt="" />}
-          <div>
-            <h1 className="text-xl font-extrabold">{user.displayName} {user.isVerified && <span className="text-brand">✓</span>}</h1>
-            <p className="text-gray-500">@{user.username} &middot; {user.email}</p>
-            <p className="text-xs text-gray-400 mt-1">Role: {user.role} &middot; Joined {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}</p>
+      <button onClick={() => router.back()} className="text-brand text-sm font-bold mb-4 min-h-[44px] flex items-center">&larr; Back</button>
+      <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+        <div className="flex items-center gap-3 sm:gap-4 mb-6">
+          {user.avatarUrl ? <img src={user.avatarUrl} className="w-12 h-12 sm:w-16 sm:h-16 rounded-full shrink-0" alt="" /> : <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-brand/20 flex items-center justify-center text-brand font-bold text-lg shrink-0">{(user.displayName || user.username || 'U')[0].toUpperCase()}</div>}
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-extrabold truncate">{user.displayName} {user.isVerified && <span className="text-brand">✓</span>}</h1>
+            <p className="text-gray-500 text-sm truncate">@{user.username} · {user.email}</p>
+            <p className="text-xs text-gray-400 mt-1">Role: {user.role} · Joined {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}</p>
           </div>
         </div>
         <div className="space-y-4">
           <div>
             <label className="text-sm font-bold text-gray-700">Role</label>
-            <select value={user.role} onChange={e => update({ role: e.target.value })} disabled={saving} className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-300">
+            <select value={user.role} onChange={e => update({ role: e.target.value })} disabled={saving} className="w-full mt-1 px-3 py-3 rounded-lg border border-gray-300 min-h-[44px]">
               <option value="user">User</option>
               <option value="moderator">Moderator</option>
               <option value="admin">Admin</option>
               <option value="super_admin">Super Admin</option>
             </select>
           </div>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+            <label className="flex items-center gap-2 min-h-[44px]">
               <input type="checkbox" checked={user.isVerified} onChange={e => update({ isVerified: e.target.checked })} disabled={saving} className="w-4 h-4" />
               <span className="text-sm font-bold">Verified</span>
             </label>
-            <label className="flex items-center gap-2">
+            <label className="flex items-center gap-2 min-h-[44px]">
               <input type="checkbox" checked={user.isBanned} onChange={e => update({ isBanned: e.target.checked })} disabled={saving} className="w-4 h-4" />
               <span className="text-sm font-bold text-red-600">Banned</span>
             </label>
@@ -68,7 +68,7 @@ export default function UserDetailPage() {
               <p className="text-sm text-red-600">This user is banned{user.banReason ? `: ${user.banReason}` : ''}</p>
             </div>
           )}
-          <button onClick={() => { if (confirm('Delete this user permanently?')) { const t = localStorage.getItem('admin_token'); fetch(`${API}/admin/users/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${t}` } }).then(() => router.push('/admin/users')); } }} className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-600 mt-4">Delete User</button>
+          <button onClick={() => { if (confirm('Delete this user permanently?')) { const t = localStorage.getItem('admin_token'); fetch(`${API}/admin/users/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${t}` } }).then(() => router.push('/admin/users')); } }} className="bg-red-500 text-white px-4 py-3 rounded-lg font-bold hover:bg-red-600 mt-4 min-h-[44px] w-full sm:w-auto">Delete User</button>
         </div>
       </div>
     </div>

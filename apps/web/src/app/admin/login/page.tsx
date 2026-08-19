@@ -29,14 +29,14 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-      <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-8 w-full max-w-sm shadow-2xl">
+    <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 sm:p-8 w-full max-w-sm shadow-2xl">
         <h1 className="text-2xl font-extrabold text-center mb-6">XYTEEE Admin</h1>
         <div className="space-y-4">
-          <input type="email" placeholder="Admin email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none" required />
-          <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none" required />
+          <input type="email" placeholder="Admin email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none min-h-[44px]" required />
+          <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none min-h-[44px]" required />
           {error && <p className="text-red-500 text-sm">{error}</p>}
-          <button type="submit" disabled={loading} className="w-full bg-brand text-white py-3 rounded-xl font-bold hover:bg-brand-dark disabled:opacity-50">{loading ? 'Signing in...' : 'Sign In'}</button>
+          <button type="submit" disabled={loading} className="w-full bg-brand text-white py-3 rounded-xl font-bold hover:bg-brand-dark disabled:opacity-50 min-h-[44px]">{loading ? 'Signing in...' : 'Sign In'}</button>
         </div>
       </form>
     </div>
