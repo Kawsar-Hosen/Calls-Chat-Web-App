@@ -27,12 +27,24 @@ async def generate_turn_credentials() -> list[dict]:
                 headers=headers,
             )
             response.raise_for_status()
-            servers = response.json().get("iceServers") or {}
-        result = [{
-            "urls": servers.get("urls", []),
-            "username": servers.get("username", ""),
-            "credential": servers.get("credential", ""),
-        }]
+            raw = response.json().get("iceServers") or []
+        result: list[dict] = []
+        if isinstance(raw, list) and raw:
+            for srv in raw:
+                if isinstance(srv, dict):
+                    result.append({
+                        "urls": srv.get("urls", []),
+                        "username": srv.get("username", ""),
+                        "credential": srv.get("credential", ""),
+                    })
+        elif isinstance(raw, dict):
+            result.append({
+                "urls": raw.get("urls", []),
+                "username": raw.get("username", ""),
+                "credential": raw.get("credential", ""),
+            })
+        if not result:
+            result = [{"urls": ["stun:stun.cloudflare.com:3478"]}]
         _cache["ice_servers"] = result
         _cache["expires_at"] = time.monotonic() + _TTL * 0.8
         return result

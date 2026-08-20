@@ -1404,9 +1404,19 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                     relay["candidate"] = event.get("candidate")
                 elif kind == "call.decline":
                     relay["reason"] = event.get("reason") or "declined"
-                members = await member_ids(db, conversation_id)
-                await manager.send_users(members, relay, exclude=user.id)
+                if kind in ("call.answer", "call.ice", "call.hangup", "call.decline"):
+                    members = await member_ids(db, conversation_id)
+                    await manager.send_users(members, relay, exclude=user.id)
                 if kind == "call.offer":
+                    conv = await db.get(Conversation, conversation_id)
+                    if conv and conv.kind != "direct":
+                        await websocket.send_json({"type": "error", "detail": "Calls are only supported in direct conversations"})
+                        continue
+                    relay["caller_name"] = user.display_name or ""
+                    relay["caller_username"] = user.username or ""
+                    relay["caller_avatar"] = user.avatar_url or ""
+                    members = [m for m in (await member_ids(db, conversation_id)) if m != user.id]
+                    await manager.send_users(members, relay, exclude=user.id)
                     offer_kind = event.get("kind") or "audio"
                     db.add(CallOffer(conversation_id=conversation_id, caller_id=user.id, sdp=event.get("sdp") or "", kind=offer_kind))
                     await db.commit()

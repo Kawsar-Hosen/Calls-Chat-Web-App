@@ -254,7 +254,7 @@ export function CallProvider({ children }: PropsWithChildren) {
       playCallRingtone(active.incoming ? 'incoming' : 'cellular');
     }
     return () => stopCallRingtone();
-  }, [active, session, session?.phase, active?.incoming]);
+  }, [active?.conversationId, active?.incoming, session.phase]);
 
   useEffect(() => {
     if (active && session && session.phase === 'ended') {

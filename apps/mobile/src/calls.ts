@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { mediaDevices, RTCPeerConnection, RTCSessionDescription, type MediaStream, type RTCIceCandidate } from 'react-native-webrtc';
+import { setAudioModeAsync } from 'expo-audio';
 import { api } from '@/api';
 import { useSocket } from '@/socket';
 
@@ -77,11 +78,12 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
     activeAtRef.current = null;
     setPhase('ended');
     setEndReason(reason);
-    try { pcRef.current?.close(); } catch { /* ignore */ }
+    try { pcRef.current?.close(); } catch {}
     pcRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     activeCallConversation = null;
+    setAudioModeAsync({ shouldRouteThroughEarpiece: false, playsInSilentMode: true, allowsRecording: false }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -117,7 +119,7 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
       while (iceBuffer.current.length) {
         const candidate = iceBuffer.current.shift();
         if (candidate) {
-          try { void pcRef.current.addIceCandidate(candidate); } catch { /* ignore */ }
+          try { pcRef.current.addIceCandidate(candidate); } catch {}
         }
       }
     };
@@ -172,12 +174,16 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
       setLocalStream(stream);
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
+      setAudioModeAsync({ shouldRouteThroughEarpiece: false, playsInSilentMode: true, allowsRecording: true }).catch(() => {});
+
       if (!incoming) {
         try {
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           send({ type: 'call.offer', conversation_id: conversationId, sdp: offer.sdp ?? '', kind });
-        } catch { /* ignore */ }
+        } catch {
+          if (!disposed) endLocal('failed');
+        }
       } else {
         let pending = takePendingOffer(conversationId);
         if (!pending) {
@@ -193,9 +199,11 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
             await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: pending.sdp }));
             remoteDescSet.current = true;
             flushIce();
-          } catch { /* ignore */ }
+          } catch {
+            if (!disposed) endLocal('failed');
+          }
         } else if (!disposed) {
-          try { send({ type: 'call.decline', conversation_id: conversationId, reason: 'missed' }); } catch { /* ignore */ }
+          try { send({ type: 'call.decline', conversation_id: conversationId, reason: 'missed' }); } catch {}
           endLocal('missed');
         }
       }
@@ -209,16 +217,17 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
       if (event.type === 'call.answer' && !incoming) {
         if (event.sdp && !remoteDescSet.current) {
           remoteDescSet.current = true;
-          try {
-            void pcRef.current?.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: event.sdp }));
-          } catch { /* ignore */ }
-          flushIce();
-          markActive();
+          pcRef.current?.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: event.sdp })).then(() => {
+            flushIce();
+            markActive();
+          }).catch(() => {
+            if (!disposed) endLocal('failed');
+          });
         }
       } else if (event.type === 'call.ice') {
         const candidate = event.candidate as RTCIceCandidate;
         if (remoteDescSet.current) {
-          try { void pcRef.current?.addIceCandidate(candidate); } catch { /* ignore */ }
+          try { pcRef.current?.addIceCandidate(candidate); } catch {}
         } else {
           iceBuffer.current.push(candidate);
         }
@@ -233,7 +242,7 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
       disposed = true;
       unsubscribe();
       if (activeCallConversation === conversationId) activeCallConversation = null;
-      try { pcRef.current?.close(); } catch { /* ignore */ }
+      try { pcRef.current?.close(); } catch {}
       pcRef.current = null;
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
@@ -257,21 +266,27 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
     void (async () => {
       try {
         const answerDescription = await pcRef.current?.createAnswer();
+        if (!answerDescription) {
+          endLocal('failed');
+          return;
+        }
         await pcRef.current?.setLocalDescription(answerDescription);
-        send({ type: 'call.answer', conversation_id: conversationId, sdp: answerDescription?.sdp ?? '' });
-      } catch { /* ignore */ }
+        send({ type: 'call.answer', conversation_id: conversationId, sdp: answerDescription.sdp ?? '' });
+      } catch {
+        endLocal('failed');
+      }
     })();
-  }, [conversationId, send]);
+  }, [conversationId, send, endLocal]);
 
   const decline = useCallback(() => {
     if (!conversationId || endedRef.current) return;
-    try { send({ type: 'call.decline', conversation_id: conversationId, reason: 'declined' }); } catch { /* ignore */ }
+    try { send({ type: 'call.decline', conversation_id: conversationId, reason: 'declined' }); } catch {}
     endLocal('self');
   }, [conversationId, send, endLocal]);
 
   const hangUp = useCallback(() => {
     if (!conversationId || endedRef.current) return;
-    try { send({ type: 'call.hangup', conversation_id: conversationId }); } catch { /* ignore */ }
+    try { send({ type: 'call.hangup', conversation_id: conversationId }); } catch {}
     endLocal('self');
   }, [conversationId, send, endLocal]);
 
@@ -285,7 +300,11 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
   }, []);
 
   const toggleSpeaker = useCallback(() => {
-    setSpeaker((value) => !value);
+    setSpeaker((value) => {
+      const next = !value;
+      setAudioModeAsync({ shouldRouteThroughEarpiece: !next }).catch(() => {});
+      return next;
+    });
   }, []);
 
   const toggleVideo = useCallback(() => {
@@ -309,17 +328,17 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
       const newVideo = swapped.getVideoTracks()[0];
       const oldVideo = stream.getVideoTracks()[0];
       if (oldVideo) {
-        try { stream.removeTrack(oldVideo); } catch { /* ignore */ }
-        try { oldVideo.stop(); } catch { /* ignore */ }
+        try { stream.removeTrack(oldVideo); } catch {}
+        try { oldVideo.stop(); } catch {}
       }
       if (newVideo) {
         stream.addTrack(newVideo);
         if (!videoOn) newVideo.enabled = false;
         const sender = (await pcRef.current.getSenders()).find((s) => s.track?.kind === 'video');
-        if (sender) { try { pcRef.current.removeTrack(sender); } catch { /* ignore */ } }
+        if (sender) { try { pcRef.current.removeTrack(sender); } catch {} }
         pcRef.current.addTrack(newVideo, stream);
       }
-    } catch { /* ignore */ }
+    } catch {}
   }, [videoOn]);
 
   useEffect(() => {
@@ -327,11 +346,11 @@ export function useCallSession(conversationId: string, peerId: string, kind: Cal
     const timer = setTimeout(() => {
       if (incoming) {
         if (!endedRef.current) {
-          try { send({ type: 'call.decline', conversation_id: conversationId, reason: 'missed' }); } catch { /* ignore */ }
+          try { send({ type: 'call.decline', conversation_id: conversationId, reason: 'missed' }); } catch {}
           endLocal('missed');
         }
       } else if (!endedRef.current) {
-        try { send({ type: 'call.hangup', conversation_id: conversationId }); } catch { /* ignore */ }
+        try { send({ type: 'call.hangup', conversation_id: conversationId }); } catch {}
         endLocal('no-answer');
       }
     }, RING_TIMEOUT_MS);
