@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
   Modal,
@@ -12,11 +13,15 @@ import {
   View,
 } from 'react-native';
 import { api } from '@/api';
+import { useAuth } from '@/auth';
 import { useTheme, useFont } from '@/theme';
 import { useI18n } from '@/i18n';
+import { useSocket } from '@/socket';
 import { Avatar } from '@/ui';
+import { FluentEmoji, EmojiText, isEmojiOnly } from '@/emoji';
 import type { PostComment } from '@/types';
 import { VerifiedBadge } from '@/components/VerifiedBadge';
+import { EmojiPicker } from '@/components/EmojiPicker';
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -36,15 +41,24 @@ interface CommentSheetProps {
   onCommentAdded?: () => void;
 }
 
+interface ReplyTo {
+  commentId: string;
+  username: string;
+}
+
 export function CommentSheet({ visible, postId, onClose, onCommentAdded }: CommentSheetProps) {
+  const { user } = useAuth();
   const { colors } = useTheme();
   const { fontFamily } = useFont();
   const { t } = useI18n();
+  const { subscribe } = useSocket();
   const [comments, setComments] = useState<PostComment[]>([]);
   const [loading, setLoading] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [cursor, setCursor] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
+  const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const fetchComments = useCallback(async (reset?: boolean) => {
@@ -63,44 +77,76 @@ export function CommentSheet({ visible, postId, onClose, onCommentAdded }: Comme
       setComments([]);
       setCursor(null);
       setNewComment('');
+      setReplyTo(null);
       fetchComments(true);
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    return subscribe((event) => {
+      if (event.type === 'comment.created' && event.postId === postId) {
+        setComments(prev => {
+          if (prev.some((c) => c.id === event.comment.id)) return prev;
+          return [event.comment, ...prev];
+        });
+      } else if (event.type === 'comment.deleted' && event.postId === postId) {
+        setComments(prev => prev.filter((c) => c.id !== event.commentId));
+      }
+    });
+  }, [visible, subscribe, postId]);
 
   const handleSend = useCallback(async () => {
     const trimmed = newComment.trim();
     if (!trimmed || sending) return;
     setSending(true);
     try {
-      const comment = await api.addComment(postId, trimmed);
+      const comment = await api.addComment(postId, trimmed, replyTo?.commentId);
       setComments(prev => [comment, ...prev]);
       setNewComment('');
+      setReplyTo(null);
       onCommentAdded?.();
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     } catch {}
     setSending(false);
-  }, [newComment, postId, sending, onCommentAdded]);
+  }, [newComment, postId, sending, onCommentAdded, replyTo]);
+
+  const handleEmojiSelect = useCallback((char: string) => {
+    setNewComment(prev => prev + char);
+    setEmojiPickerVisible(false);
+  }, []);
+
+  const handleReact = useCallback(async (commentId: string) => {
+    if (!user) return;
+    try {
+      const res = await api.reactComment(postId, commentId, '👍');
+      setComments(prev => prev.map((c) => {
+        if (c.id !== commentId) return c;
+        const isNowLiked = res.myReaction === '👍';
+        let newReactions = c.reactions.filter((r) => r.userId !== user.id || r.emoji !== '👍');
+        if (isNowLiked) {
+          newReactions = [...newReactions, { emoji: '👍', userId: user.id, displayName: user.displayName, avatarUrl: user.avatarUrl }];
+        }
+        return { ...c, reactionCount: res.reactionCount, reactions: newReactions };
+      }));
+    } catch {}
+  }, [postId, user]);
+
+  const handleReply = useCallback((comment: PostComment) => {
+    setReplyTo({ commentId: comment.id, username: comment.author.displayName });
+  }, []);
+
+  const cancelReply = useCallback(() => {
+    setReplyTo(null);
+  }, []);
 
   const renderComment = useCallback(({ item }: { item: PostComment }) => (
-    <View style={styles.commentRow}>
-      <Avatar name={item.author.displayName} uri={item.author.avatarUrl} size={32} />
-      <View style={styles.commentBody}>
-        <View style={styles.commentHeader}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={[styles.commentAuthor, { color: colors.text, fontFamily }]}>{item.author.displayName}</Text>
-            {item.author.isVerified ? <VerifiedBadge category={item.author.verifiedCategory ?? null} username={item.author.username} displayName={item.author.displayName} verifiedAt={item.author.verifiedAt ?? null} /> : null}
-          </View>
-          <Text style={[styles.commentTime, { color: colors.faint }]}>{timeAgo(item.createdAt)}</Text>
-        </View>
-        <Text style={[styles.commentContent, { color: colors.text, fontFamily }]}>{item.content}</Text>
-        {item.reactionCount && item.reactionCount > 0 ? (
-          <View style={[styles.reactionBadge, { backgroundColor: colors.border }]}>
-            <Text style={[styles.reactionBadgeText, { color: colors.muted }]}>{item.reactionCount}</Text>
-          </View>
-        ) : null}
-      </View>
-    </View>
-  ), [colors]);
+    <CommentRow comment={item} colors={colors} fontFamily={fontFamily} user={user} onReact={handleReact} onReply={handleReply} />
+  ), [colors, fontFamily, user, handleReact, handleReply]);
+
+  const listHeader = useMemo(() => (
+    <View style={styles.listHeader} />
+  ), []);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -111,7 +157,8 @@ export function CommentSheet({ visible, postId, onClose, onCommentAdded }: Comme
       >
         <View style={[styles.panel, { backgroundColor: colors.surface }]}>
           <View style={[styles.header, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.title, { color: colors.text }]}>{t('comments')}</Text>
+            <View style={styles.headerDrag} />
+            <Text style={[styles.title, { color: colors.text, fontFamily }]}>{t('comments')}</Text>
             <Pressable onPress={onClose} style={styles.closeBtn}>
               <MaterialCommunityIcons name="close" size={22} color={colors.muted} />
             </Pressable>
@@ -123,20 +170,41 @@ export function CommentSheet({ visible, postId, onClose, onCommentAdded }: Comme
             keyExtractor={item => item.id}
             renderItem={renderComment}
             contentContainerStyle={styles.listContent}
+            ListHeaderComponent={listHeader}
             ListEmptyComponent={!loading ? (
-              <Text style={[styles.empty, { color: colors.faint }]}>{t('noComments')}</Text>
+              <View style={styles.emptyContainer}>
+                <FluentEmoji char="💬" size={48} />
+                <Text style={[styles.empty, { color: colors.faint, fontFamily }]}>{t('noComments')}</Text>
+              </View>
             ) : null}
             ListFooterComponent={loading ? (
-              <Text style={[styles.loading, { color: colors.faint }]}>{t('loading')}</Text>
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={colors.accent} />
+              </View>
             ) : null}
             onEndReached={() => { if (cursor) fetchComments(); }}
             onEndReachedThreshold={0.4}
           />
 
+          {replyTo ? (
+            <View style={[styles.replyBar, { backgroundColor: colors.elevated, borderTopColor: colors.border }]}>
+              <MaterialCommunityIcons name="reply" size={16} color={colors.accent} />
+              <Text style={[styles.replyText, { color: colors.accent, fontFamily }]} numberOfLines={1}>
+                {`Replying to @${replyTo.username}`}
+              </Text>
+              <Pressable onPress={cancelReply} hitSlop={8} style={styles.replyCancelBtn}>
+                <MaterialCommunityIcons name="close-circle" size={18} color={colors.faint} />
+              </Pressable>
+            </View>
+          ) : null}
+
           <View style={[styles.inputBar, { borderTopColor: colors.border, backgroundColor: colors.surface }]}>
+            <Pressable onPress={() => setEmojiPickerVisible(true)} style={styles.emojiBtn}>
+              <FluentEmoji char="😊" size={24} />
+            </Pressable>
             <TextInput
-              style={[styles.input, { backgroundColor: colors.border, color: colors.text }]}
-              placeholder={t('writeComment')}
+              style={[styles.input, { backgroundColor: colors.elevated, color: colors.text, fontFamily }]}
+              placeholder={replyTo ? `Reply to @${replyTo.username}...` : t('writeComment')}
               placeholderTextColor={colors.faint}
               value={newComment}
               onChangeText={setNewComment}
@@ -146,36 +214,145 @@ export function CommentSheet({ visible, postId, onClose, onCommentAdded }: Comme
             <Pressable
               onPress={handleSend}
               disabled={!newComment.trim() || sending}
-              style={[styles.sendBtn, { opacity: newComment.trim() ? 1 : 0.4 }]}
+              style={[styles.sendBtn, { backgroundColor: newComment.trim() ? colors.accent : colors.elevated }]}
             >
-              <MaterialCommunityIcons name="send" size={20} color={colors.accent} />
+              {sending ? (
+                <ActivityIndicator size="small" color={colors.accentText} />
+              ) : (
+                <MaterialCommunityIcons
+                  name="send"
+                  size={18}
+                  color={newComment.trim() ? colors.accentText : colors.faint}
+                />
+              )}
             </Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <EmojiPicker visible={emojiPickerVisible} onSelect={handleEmojiSelect} onClose={() => setEmojiPickerVisible(false)} />
     </Modal>
   );
 }
+
+interface CommentRowProps {
+  comment: PostComment;
+  colors: ReturnType<typeof useTheme>['colors'];
+  fontFamily: string | undefined;
+  user: ReturnType<typeof useAuth>['user'];
+  onReact: (commentId: string) => void;
+  onReply: (comment: PostComment) => void;
+}
+
+const CommentRow = memo(function CommentRow({ comment, colors, fontFamily, user, onReact, onReply }: CommentRowProps) {
+  const isLiked = useMemo(() => {
+    if (!user) return false;
+    return comment.reactions.some((r) => r.userId === user.id && r.emoji === '👍');
+  }, [comment.reactions, user]);
+
+  const isSticker = useMemo(() => isEmojiOnly(comment.content) && comment.content.length <= 8, [comment.content]);
+
+  return (
+    <View style={styles.commentRow}>
+      <Avatar name={comment.author.displayName} uri={comment.author.avatarUrl} size={34} online={comment.author.isOnline} />
+      <View style={styles.commentBody}>
+        <View style={styles.commentHeader}>
+          <View style={styles.nameRow}>
+            <Text style={[styles.commentAuthor, { color: colors.text, fontFamily }]} numberOfLines={1}>
+              {comment.author.displayName}
+            </Text>
+            {comment.author.isVerified ? (
+              <VerifiedBadge
+                category={comment.author.verifiedCategory ?? null}
+                username={comment.author.username}
+                displayName={comment.author.displayName}
+                verifiedAt={comment.author.verifiedAt ?? null}
+              />
+            ) : null}
+          </View>
+          <Text style={[styles.commentTime, { color: colors.faint }]}>{timeAgo(comment.createdAt)}</Text>
+        </View>
+
+        {comment.parentId ? (
+          <View style={[styles.replyBadge, { backgroundColor: colors.accentSoft }]}>
+            <MaterialCommunityIcons name="reply" size={10} color={colors.accent} />
+            <Text style={[styles.replyBadgeText, { color: colors.accent, fontFamily }]} numberOfLines={1}>
+              reply
+            </Text>
+          </View>
+        ) : null}
+
+        {isSticker ? (
+          <View style={styles.stickerContainer}>
+            <EmojiText text={comment.content} size={48} />
+          </View>
+        ) : (
+          <Text style={[styles.commentContent, { color: colors.text, fontFamily }]}>{comment.content}</Text>
+        )}
+
+        <View style={styles.commentActions}>
+          <View style={styles.actionRow}>
+            <Pressable onPress={() => onReact(comment.id)} style={[styles.actionBtn, isLiked && styles.actionBtnActive]}>
+              <FluentEmoji char="👍" size={16} />
+              {comment.reactionCount > 0 ? (
+                <Text style={[styles.actionCount, { color: isLiked ? colors.accent : colors.muted, fontFamily }]}>
+                  {comment.reactionCount}
+                </Text>
+              ) : null}
+            </Pressable>
+
+            <Pressable onPress={() => onReply(comment)} style={styles.actionBtn}>
+              <MaterialCommunityIcons name="reply-outline" size={16} color={colors.muted} />
+              <Text style={[styles.actionLabel, { color: colors.muted, fontFamily }]}>Reply</Text>
+            </Pressable>
+          </View>
+
+          {comment.replyCount > 0 ? (
+            <Text style={[styles.replyCountText, { color: colors.faint, fontFamily }]}>
+              {comment.replyCount} {comment.replyCount === 1 ? 'reply' : 'replies'}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+});
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '80%' },
   panel: { flex: 1, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
-  title: { fontSize: 17, fontWeight: '700' },
-  closeBtn: { padding: 4 },
-  listContent: { padding: 16, paddingBottom: 8 },
-  commentRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  header: { alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  headerDrag: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#E0E0E0', marginBottom: 10 },
+  title: { fontSize: 16, fontWeight: '700' },
+  closeBtn: { position: 'absolute', right: 16, top: 14, padding: 4 },
+  listContent: { paddingBottom: 8 },
+  listHeader: { height: 4 },
+  commentRow: { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 10, gap: 10 },
   commentBody: { flex: 1 },
-  commentHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  commentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   commentAuthor: { fontSize: 13, fontWeight: '700' },
-  commentTime: { fontSize: 11 },
+  commentTime: { fontSize: 11, marginLeft: 8 },
+  replyBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1, marginBottom: 4 },
+  replyBadgeText: { fontSize: 10, fontWeight: '600' },
   commentContent: { fontSize: 14, lineHeight: 20 },
-  reactionBadge: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, marginTop: 4 },
-  reactionBadgeText: { fontSize: 11, fontWeight: '600' },
-  empty: { textAlign: 'center', fontSize: 14, paddingVertical: 40 },
-  loading: { textAlign: 'center', fontSize: 13, paddingVertical: 16 },
-  inputBar: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, borderTopWidth: StyleSheet.hairlineWidth, gap: 10 },
-  input: { flex: 1, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, fontSize: 14, maxHeight: 100 },
-  sendBtn: { padding: 8 },
+  stickerContainer: { paddingVertical: 4 },
+  commentActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 2 },
+  actionBtnActive: { opacity: 1 },
+  actionCount: { fontSize: 12, fontWeight: '600' },
+  actionLabel: { fontSize: 12, fontWeight: '600' },
+  replyCountText: { fontSize: 11, fontWeight: '600' },
+  emptyContainer: { alignItems: 'center', paddingVertical: 48, gap: 12 },
+  empty: { fontSize: 14 },
+  loadingContainer: { paddingVertical: 20, alignItems: 'center' },
+  replyBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, gap: 6, borderTopWidth: StyleSheet.hairlineWidth },
+  replyText: { flex: 1, fontSize: 13, fontWeight: '600' },
+  replyCancelBtn: { padding: 2 },
+  inputBar: { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, gap: 8 },
+  emojiBtn: { padding: 6 },
+  input: { flex: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, fontSize: 14, maxHeight: 100 },
+  sendBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
 });

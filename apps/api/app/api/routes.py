@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode, urlparse
 from urllib.request import urlopen
 import jwt
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from jwt import PyJWKClient
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1542,6 +1542,8 @@ async def public_blog_post(slug: str, db: AsyncSession = Depends(get_db)):
 
 admin = APIRouter()
 
+_global_settings: dict = {"maintenance_mode": False, "registration_open": True, "announcement": None}
+
 
 @admin.get("/admin/stats", response_model=AdminStats)
 async def admin_stats(admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
@@ -2037,3 +2039,201 @@ async def admin_update_verification_request(
 
     await db.commit()
     return {"success": True, "status": r.status}
+
+
+@admin.get("/admin/users/{user_id}/posts")
+async def admin_get_user_posts(
+    user_id: str,
+    limit: int = Query(20, le=50),
+    offset: int = Query(0, ge=0),
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+    total = await db.scalar(
+        select(func.count()).select_from(Post).where(Post.author_id == user_id, Post.deleted_at.is_(None))
+    )
+    rows = (await db.execute(
+        select(Post).where(Post.author_id == user_id, Post.deleted_at.is_(None))
+        .order_by(Post.created_at.desc()).limit(limit).offset(offset)
+    )).scalars().all()
+    items = []
+    for p in rows:
+        likes = await db.scalar(select(func.count()).select_from(PostLike).where(PostLike.post_id == p.id))
+        comments = await db.scalar(select(func.count()).select_from(PostComment).where(PostComment.post_id == p.id, PostComment.deleted_at.is_(None)))
+        items.append({
+            "id": p.id, "content": p.content, "visibility": p.visibility,
+            "created_at": p.created_at.isoformat(),
+            "like_count": likes or 0, "comment_count": comments or 0,
+        })
+    return {"items": items, "total": total or 0}
+
+
+@admin.get("/admin/posts/{post_id}")
+async def admin_get_post(
+    post_id: str,
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    post = await db.get(Post, post_id)
+    if not post:
+        raise HTTPException(404, "Post not found")
+    author = await db.get(User, post.author_id)
+    media = (await db.execute(
+        select(PostMedia).where(PostMedia.post_id == post.id).order_by(PostMedia.sort_order)
+    )).scalars().all()
+    comments_rows = (await db.execute(
+        select(PostComment).where(PostComment.post_id == post.id, PostComment.deleted_at.is_(None))
+        .order_by(PostComment.created_at.desc()).limit(50)
+    )).scalars().all()
+    likes = await db.scalar(select(func.count()).select_from(PostLike).where(PostLike.post_id == post.id))
+    comments_count = await db.scalar(select(func.count()).select_from(PostComment).where(PostComment.post_id == post.id, PostComment.deleted_at.is_(None)))
+    shares = await db.scalar(select(func.count()).select_from(PostShare).where(PostShare.post_id == post.id))
+    reaction_count = await db.scalar(select(func.count()).select_from(PostLike).where(PostLike.post_id == post.id))
+
+    comments_list = []
+    for c in comments_rows:
+        ca = await db.get(User, c.author_id)
+        cl = await db.scalar(select(func.count()).select_from(CommentLike).where(CommentLike.comment_id == c.id))
+        comments_list.append({
+            "id": c.id, "author_id": c.author_id,
+            "author_name": ca.display_name if ca else None,
+            "author_username": ca.username if ca else None,
+            "author_avatar": ca.avatar_url if ca else None,
+            "content": c.content, "created_at": c.created_at.isoformat(),
+            "like_count": cl or 0,
+        })
+
+    return {
+        "id": post.id, "content": post.content, "visibility": post.visibility,
+        "author_id": post.author_id,
+        "author_name": author.display_name if author else None,
+        "author_username": author.username if author else None,
+        "author_avatar": author.avatar_url if author else None,
+        "media": [{"id": m.id, "url": m.url, "mime_type": m.mime_type, "width": m.width, "height": m.height} for m in media],
+        "like_count": likes or 0, "comment_count": comments_count or 0,
+        "share_count": shares or 0, "reaction_count": reaction_count or 0,
+        "comments": comments_list,
+        "created_at": post.created_at.isoformat(),
+    }
+
+
+@admin.patch("/admin/posts/{post_id}")
+async def admin_update_post(
+    post_id: str,
+    data: dict = Body(...),
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    post = await db.get(Post, post_id)
+    if not post:
+        raise HTTPException(404, "Post not found")
+    if "visibility" in data:
+        if data["visibility"] not in ("public", "friends", "private"):
+            raise HTTPException(400, "Invalid visibility")
+        post.visibility = data["visibility"]
+    if "content" in data:
+        post.content = data["content"]
+    await db.commit()
+    return {"success": True}
+
+
+@admin.patch("/admin/reports/{report_id}/auto-action")
+async def admin_report_auto_action(
+    report_id: str,
+    data: dict = Body(...),
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    report = await db.get(Report, report_id)
+    if not report:
+        raise HTTPException(404, "Report not found")
+
+    target_user = None
+    if report.type == "user":
+        target_user = await db.get(User, report.target_id)
+    elif report.type == "post":
+        post = await db.get(Post, report.target_id)
+        if post:
+            target_user = await db.get(User, post.author_id)
+    elif report.type == "comment":
+        comment = await db.get(PostComment, report.target_id)
+        if comment:
+            target_user = await db.get(User, comment.author_id)
+
+    actions_taken = []
+
+    if data.get("delete_content"):
+        if report.type == "post":
+            post = await db.get(Post, report.target_id)
+            if post:
+                post.deleted_at = utcnow()
+                actions_taken.append("content_deleted")
+        elif report.type == "comment":
+            comment = await db.get(PostComment, report.target_id)
+            if comment:
+                comment.deleted_at = utcnow()
+                actions_taken.append("content_deleted")
+
+    if data.get("ban_user") and target_user:
+        target_user.is_banned = True
+        target_user.banned_at = utcnow()
+        target_user.ban_reason = data.get("ban_reason", f"Auto-banned via report {report.id}")
+        actions_taken.append("user_banned")
+
+    report.status = "resolved"
+    report.action_taken = ", ".join(actions_taken) if actions_taken else "none"
+    report.reviewed_by = admin_user.id
+    report.reviewed_at = utcnow()
+    await db.commit()
+    return {"success": True, "actions_taken": actions_taken}
+
+
+@admin.post("/admin/broadcast")
+async def admin_broadcast(
+    data: dict = Body(...),
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    title = data.get("title", "")
+    body_text = data.get("body", "")
+    notif_type = data.get("type", "broadcast")
+    if not title and not body_text:
+        raise HTTPException(400, "Title or body required")
+    user_ids = list((await db.scalars(
+        select(User.id).where(User.is_banned == False)
+    )).all())
+    for uid in user_ids:
+        db.add(Notification(user_id=uid, type=notif_type, body=f"{title}: {body_text}" if title else body_text))
+    await db.commit()
+    return {"success": True, "count": len(user_ids)}
+
+
+@admin.get("/admin/audit-log")
+async def admin_get_audit_log(
+    limit: int = Query(50, le=100),
+    offset: int = Query(0, ge=0),
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return {"items": [], "total": 0}
+
+
+@admin.get("/admin/settings/platform")
+async def admin_get_platform_settings(
+    admin_user: User = Depends(get_admin_user),
+):
+    return _global_settings
+
+
+@admin.patch("/admin/settings/platform")
+async def admin_update_platform_settings(
+    data: dict = Body(...),
+    admin_user: User = Depends(get_admin_user),
+):
+    for key in ("maintenance_mode", "registration_open", "announcement"):
+        if key in data:
+            _global_settings[key] = data[key]
+    return _global_settings

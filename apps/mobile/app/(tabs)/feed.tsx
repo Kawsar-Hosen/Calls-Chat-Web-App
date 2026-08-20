@@ -9,6 +9,7 @@ import { useAuth } from '@/auth';
 import { useSocket } from '@/socket';
 import { useTheme } from '@/theme';
 import { useI18n } from '@/i18n';
+import { useNotifications } from '@/NotificationContext';
 import type { Post, StoryGroup } from '@/types';
 import { PostCard } from '@/components/PostCard';
 import { StoryRing } from '@/components/StoryRing';
@@ -19,6 +20,7 @@ export default function FeedScreen() {
   const { colors } = useTheme();
   const { t } = useI18n();
   const router = useRouter();
+  const { unreadCount } = useNotifications();
   const [section, setSection] = useState<'friends' | 'public'>('public');
   const [posts, setPosts] = useState<Post[]>([]);
   const [stories, setStories] = useState<StoryGroup[]>([]);
@@ -99,7 +101,12 @@ export default function FeedScreen() {
             <MaterialCommunityIcons name="magnify" size={22} color={colors.text} />
           </Pressable>
           <Pressable onPress={() => router.push('/notifications')} style={({ pressed }) => [styles.headerBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
-            <MaterialCommunityIcons name="bell-outline" size={22} color={colors.text} />
+            <MaterialCommunityIcons name={unreadCount > 0 ? 'bell' : 'bell-outline'} size={22} color={unreadCount > 0 ? colors.accent : colors.text} />
+            {unreadCount > 0 ? (
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            ) : null}
           </Pressable>
           <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => [styles.headerBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
             <MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} />
@@ -125,7 +132,12 @@ export default function FeedScreen() {
             <MaterialCommunityIcons name="magnify" size={22} color={colors.text} />
           </Pressable>
           <Pressable onPress={() => router.push('/notifications')} style={({ pressed }) => [styles.headerBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
-            <MaterialCommunityIcons name="bell-outline" size={22} color={colors.text} />
+            <MaterialCommunityIcons name={unreadCount > 0 ? 'bell' : 'bell-outline'} size={22} color={unreadCount > 0 ? colors.accent : colors.text} />
+            {unreadCount > 0 ? (
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            ) : null}
           </Pressable>
           <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => [styles.headerBtn, { backgroundColor: colors.surface, opacity: pressed ? 0.6 : 1 }]}>
             <MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} />
@@ -180,4 +192,6 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, fontWeight: '500' },
   emptyContainer: { flexGrow: 1 },
   fab: { position: 'absolute', bottom: 24, right: 20, width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 6 },
+  notifBadge: { position: 'absolute', top: -2, right: -4, backgroundColor: '#EF4444', borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  notifBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
 });

@@ -1,6 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCallback, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { Share } from 'react-native';
 import { api } from '@/api';
 import { useTheme } from '@/theme';
 import { useI18n } from '@/i18n';
@@ -17,26 +19,40 @@ interface ShareSheetProps {
 export function ShareSheet({ visible, postId, shareCount, myShared, onClose, onShared }: ShareSheetProps) {
   const { colors } = useTheme();
   const { t } = useI18n();
-  const [sharing, setSharing] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [nativeShared, setNativeShared] = useState(false);
+  const [reposted, setReposted] = useState(false);
 
-  const handleShare = useCallback(async () => {
-    if (sharing) return;
-    setSharing(true);
+  const handleCopyLink = useCallback(async () => {
+    await Clipboard.setStringAsync(`https://xyteee.com/post/${postId}`);
+    setCopied(true);
+    setTimeout(() => { setCopied(false); onClose(); }, 800);
+  }, [postId, onClose]);
+
+  const handleNativeShare = useCallback(async () => {
+    try {
+      await Share.share({ message: `Check out this post on XYTEEE! https://xyteee.com/post/${postId}` });
+      setNativeShared(true);
+      setTimeout(() => { setNativeShared(false); onClose(); }, 800);
+    } catch {}
+  }, [postId, onClose]);
+
+  const handleRepost = useCallback(async () => {
+    if (myShared || reposted) return;
+    setReposted(true);
     try {
       await api.sharePost(postId);
       onShared?.();
     } catch {}
-    setSharing(false);
-    onClose();
-  }, [postId, sharing, onShared, onClose]);
+    setTimeout(() => { setReposted(false); onClose(); }, 800);
+  }, [postId, myShared, reposted, onShared, onClose]);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={styles.panelWrap}>
         <View style={[styles.panel, { backgroundColor: colors.surface }]}>
-          <View style={styles.handle} />
-
+          <View style={[styles.handle, { backgroundColor: colors.faint }]} />
           <Text style={[styles.title, { color: colors.text }]}>{t('shareThisPost')}</Text>
 
           <View style={styles.shareCountRow}>
@@ -51,25 +67,26 @@ export function ShareSheet({ visible, postId, shareCount, myShared, onClose, onS
             ) : null}
           </View>
 
-          <View style={[styles.toggleRow, { borderTopColor: colors.border, borderBottomColor: colors.border }]}>
-            <MaterialCommunityIcons name="repeat" size={18} color={colors.accent} />
-            <Text style={[styles.toggleLabel, { color: colors.text }]}>{t('repostToFeed')}</Text>
-            <View style={[styles.toggleDot, { backgroundColor: colors.accent }]} />
-          </View>
+          <Pressable style={[styles.row, { borderBottomColor: colors.border }]} onPress={handleCopyLink}>
+            <MaterialCommunityIcons name="link" size={20} color={colors.text} />
+            <Text style={[styles.rowLabel, { color: colors.text }]}>{copied ? 'Copied!' : 'Copy Link'}</Text>
+            {copied ? <MaterialCommunityIcons name="check" size={20} color={colors.accent} /> : null}
+          </Pressable>
 
-          <View style={styles.buttonRow}>
-            <Pressable onPress={onClose} style={[styles.cancelBtn, { borderColor: colors.border }]}>
-              <Text style={[styles.cancelText, { color: colors.text }]}>{t('cancel')}</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleShare}
-              disabled={sharing}
-              style={[styles.shareBtn, { backgroundColor: colors.accent, opacity: sharing ? 0.6 : 1 }]}
-            >
-              <MaterialCommunityIcons name="share" size={18} color="#fff" />
-              <Text style={styles.shareBtnText}>{t('shareNow')}</Text>
-            </Pressable>
-          </View>
+          <Pressable style={[styles.row, { borderBottomColor: colors.border }]} onPress={handleNativeShare}>
+            <MaterialCommunityIcons name="share-variant-outline" size={20} color={colors.text} />
+            <Text style={[styles.rowLabel, { color: colors.text }]}>{nativeShared ? 'Shared!' : 'Share via...'}</Text>
+            {nativeShared ? <MaterialCommunityIcons name="check" size={20} color={colors.accent} /> : null}
+          </Pressable>
+
+          <Pressable style={[styles.row, { borderBottomColor: colors.border }]} onPress={handleRepost} disabled={myShared}>
+            <MaterialCommunityIcons name="repeat" size={20} color={myShared ? colors.muted : colors.accent} />
+            <Text style={[styles.rowLabel, { color: myShared ? colors.muted : colors.text }]}>
+              {reposted ? 'Reposted!' : t('repostToFeed')}
+            </Text>
+            {myShared ? <Text style={[styles.rowHint, { color: colors.muted }]}>{t('shared')}</Text> : null}
+            {reposted && !myShared ? <MaterialCommunityIcons name="check" size={20} color={colors.accent} /> : null}
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -80,18 +97,13 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
   panelWrap: { position: 'absolute', bottom: 0, left: 0, right: 0 },
   panel: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 36 },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB', alignSelf: 'center', marginBottom: 16 },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   title: { fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 12 },
   shareCountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 16 },
   shareCount: { fontSize: 14, fontWeight: '500' },
   sharedBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
   sharedBadgeText: { fontSize: 12, fontWeight: '700' },
-  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, marginBottom: 20 },
-  toggleLabel: { flex: 1, fontSize: 15, fontWeight: '500' },
-  toggleDot: { width: 8, height: 8, borderRadius: 4 },
-  buttonRow: { flexDirection: 'row', gap: 12 },
-  cancelBtn: { flex: 1, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 14 },
-  cancelText: { fontSize: 15, fontWeight: '600' },
-  shareBtn: { flex: 1, flexDirection: 'row', borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14 },
-  shareBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
+  rowLabel: { flex: 1, fontSize: 15, fontWeight: '500' },
+  rowHint: { fontSize: 13, fontWeight: '500' },
 });

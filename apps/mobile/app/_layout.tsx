@@ -12,6 +12,7 @@ import { CallListener } from '@/call-listener';
 import { PushListener } from '@/push-listener';
 import { ThemeProvider, useTheme, FontProvider } from '@/theme';
 import { I18nProvider } from '@/i18n';
+import { NotificationProvider } from '@/NotificationContext';
 import { SplashScreen } from '@/splash';
 
 void SplashScreenNative.preventAutoHideAsync().catch(() => {});
@@ -77,9 +78,11 @@ export default function RootLayout() {
         <I18nProvider>
           <AuthProvider>
             <SocketProvider>
-              <CallProvider>
-                <Navigator />
-              </CallProvider>
+              <NotificationProvider>
+                <CallProvider>
+                  <Navigator />
+                </CallProvider>
+              </NotificationProvider>
             </SocketProvider>
           </AuthProvider>
         </I18nProvider>

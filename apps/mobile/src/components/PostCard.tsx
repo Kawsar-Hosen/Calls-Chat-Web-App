@@ -1,6 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { Share } from 'react-native';
 import { useRouter } from 'expo-router';
 import { api } from '@/api';
 import { useAuth } from '@/auth';
@@ -72,6 +74,8 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
   const [localOverrides, setLocalOverrides] = useState<{ myLikeEmoji?: string | null; likeCount?: number; myBookmarked?: boolean; myShared?: boolean; shareCount?: number }>({});
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [followLoading, setFollowLoading] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [viewerImage, setViewerImage] = useState<string | null>(null);
 
   const effectiveMyLike = localOverrides.myLikeEmoji !== undefined ? localOverrides.myLikeEmoji : post.myLikeEmoji;
   const effectiveLikeCount = localOverrides.likeCount !== undefined ? localOverrides.likeCount : post.likeCount;
@@ -150,6 +154,9 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
                 </Text>
               </Pressable>
             ) : null}
+            <Pressable onPress={() => setMenuOpen(true)} style={styles.headerBtn}>
+              <MaterialCommunityIcons name="dots-vertical" size={20} color={colors.faint} />
+            </Pressable>
           </View>
         </View>
       </View>
@@ -168,14 +175,16 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
       {mediaCount > 0 ? (
         <View style={[styles.mediaGrid, mediaCount === 1 && styles.mediaSingle]}>
           {post.media.slice(0, 4).map((m, i) => (
-            <Image key={m.id} source={{ uri: m.url }} style={[
-              styles.mediaImg,
-              mediaCount === 1 ? styles.mediaFull : styles.mediaHalf,
-              mediaCount > 2 && i === 0 && styles.mediaTopLeft,
-              mediaCount > 2 && i === 1 && styles.mediaTopRight,
-              mediaCount > 2 && i === 2 && styles.mediaBotLeft,
-              mediaCount > 3 && i === 3 && styles.mediaBotRight,
-            ]} resizeMode="cover" />
+            <Pressable key={m.id} onPress={() => setViewerImage(m.url)}>
+              <Image source={{ uri: m.url }} style={[
+                styles.mediaImg,
+                mediaCount === 1 ? styles.mediaFull : styles.mediaHalf,
+                mediaCount > 2 && i === 0 && styles.mediaTopLeft,
+                mediaCount > 2 && i === 1 && styles.mediaTopRight,
+                mediaCount > 2 && i === 2 && styles.mediaBotLeft,
+                mediaCount > 3 && i === 3 && styles.mediaBotRight,
+              ]} resizeMode="cover" />
+            </Pressable>
           ))}
         </View>
       ) : null}
@@ -236,6 +245,72 @@ export const PostCard = memo(function PostCard({ post, onRefresh }: { post: Post
     <CommentSheet visible={showComments} postId={post.id} onClose={() => setShowComments(false)} {...(onRefresh ? { onCommentAdded: onRefresh } : {})} />
     <ShareSheet visible={showShare} postId={post.id} shareCount={effectiveShareCount} myShared={effectiveShared} onClose={() => setShowShare(false)} {...(onRefresh ? { onShared: onRefresh } : {})} />
     <ReactionSheet visible={showReactionsDetail} reactions={post.reactions} onClose={() => setShowReactionsDetail(false)} />
+    <Modal transparent visible={menuOpen} animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+      <Pressable style={menuStyles.backdrop} onPress={() => setMenuOpen(false)}>
+        <Pressable style={[menuStyles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => undefined}>
+          <View style={[menuStyles.handle, { backgroundColor: colors.faint }]} />
+          {post.author.id === user?.id ? (
+            <>
+              <Pressable style={menuStyles.item} onPress={() => { setMenuOpen(false); router.push({ pathname: '/feed/edit' as any, params: { id: post.id } }); }}>
+                <MaterialCommunityIcons name="pencil" size={20} color={colors.text} />
+                <Text style={[menuStyles.itemText, { color: colors.text }]}>Edit Post</Text>
+              </Pressable>
+              <Pressable style={menuStyles.item} onPress={() => { setMenuOpen(false); }}>
+                <MaterialCommunityIcons name="delete" size={20} color="#EF4444" />
+                <Text style={[menuStyles.itemText, { color: '#EF4444' }]}>Delete Post</Text>
+              </Pressable>
+              <Pressable style={menuStyles.item} onPress={async () => { setMenuOpen(false); await Clipboard.setStringAsync(`https://xyteee.com/post/${post.id}`); }}>
+                <MaterialCommunityIcons name="link" size={20} color={colors.text} />
+                <Text style={[menuStyles.itemText, { color: colors.text }]}>Copy Link</Text>
+              </Pressable>
+              <Pressable style={menuStyles.item} onPress={() => setMenuOpen(false)}>
+                <MaterialCommunityIcons name="comment-off-outline" size={20} color={colors.text} />
+                <Text style={[menuStyles.itemText, { color: colors.text }]}>Turn Off Comments</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable style={menuStyles.item} onPress={() => { setMenuOpen(false); toggleBookmark(); }}>
+                <MaterialCommunityIcons name="bookmark-outline" size={20} color={colors.text} />
+                <Text style={[menuStyles.itemText, { color: colors.text }]}>Save Post</Text>
+              </Pressable>
+              <Pressable style={menuStyles.item} onPress={() => { setMenuOpen(false); setShowShare(true); }}>
+                <MaterialCommunityIcons name="share-variant" size={20} color={colors.text} />
+                <Text style={[menuStyles.itemText, { color: colors.text }]}>Share Post</Text>
+              </Pressable>
+              <Pressable style={menuStyles.item} onPress={async () => { setMenuOpen(false); await Clipboard.setStringAsync(`https://xyteee.com/post/${post.id}`); }}>
+                <MaterialCommunityIcons name="link" size={20} color={colors.text} />
+                <Text style={[menuStyles.itemText, { color: colors.text }]}>Copy Link</Text>
+              </Pressable>
+              <Pressable style={menuStyles.item} onPress={() => setMenuOpen(false)}>
+                <MaterialCommunityIcons name="eye-off-outline" size={20} color={colors.text} />
+                <Text style={[menuStyles.itemText, { color: colors.text }]}>Hide Post</Text>
+              </Pressable>
+              <Pressable style={menuStyles.item} onPress={() => { setMenuOpen(false); router.push('/settings/report' as any); }}>
+                <MaterialCommunityIcons name="flag-outline" size={20} color={colors.text} />
+                <Text style={[menuStyles.itemText, { color: colors.text }]}>Report Post</Text>
+              </Pressable>
+              <Pressable style={menuStyles.item} onPress={() => setMenuOpen(false)}>
+                <MaterialCommunityIcons name="volume-off" size={20} color={colors.text} />
+                <Text style={[menuStyles.itemText, { color: colors.text }]}>Mute @{post.author.username}</Text>
+              </Pressable>
+              <Pressable style={menuStyles.item} onPress={() => setMenuOpen(false)}>
+                <MaterialCommunityIcons name="block-helper" size={20} color="#EF4444" />
+                <Text style={[menuStyles.itemText, { color: '#EF4444' }]}>Block @{post.author.username}</Text>
+              </Pressable>
+            </>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+    <Modal visible={!!viewerImage} animationType="fade" onRequestClose={() => setViewerImage(null)}>
+      <Pressable style={imageViewerStyles.container} onPress={() => setViewerImage(null)}>
+        <Pressable style={imageViewerStyles.closeBtn} onPress={() => setViewerImage(null)}>
+          <MaterialCommunityIcons name="close" size={28} color="#FFF" />
+        </Pressable>
+        {viewerImage ? <Image source={{ uri: viewerImage }} style={imageViewerStyles.image} resizeMode="contain" /> : null}
+      </Pressable>
+    </Modal>
     </>
   );
 });
@@ -251,13 +326,14 @@ const styles = StyleSheet.create({
   dot: { fontSize: 12 },
   followBtnInline: { marginLeft: 8 },
   followBtnInlineText: { fontSize: 13, fontWeight: '700' },
+  headerBtn: { marginLeft: 'auto', padding: 4 },
   contentWrap: { paddingHorizontal: 14, paddingBottom: 10 },
   content: { fontSize: 14, lineHeight: 20 },
   seeMore: { fontSize: 13, fontWeight: '600', marginTop: 4 },
   mediaGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   mediaSingle: { paddingHorizontal: 0 },
   mediaImg: { backgroundColor: '#E5E7EB' },
-  mediaFull: { width: '100%', height: 240 },
+  mediaFull: { width: '100%', aspectRatio: 4/3, maxHeight: 300 },
   mediaHalf: { width: '50%', height: 160 },
   mediaTopLeft: { borderBottomLeftRadius: 0 },
   mediaTopRight: { borderBottomRightRadius: 0 },
@@ -276,4 +352,18 @@ const styles = StyleSheet.create({
   reactionBtn: { padding: 6, borderRadius: 20 },
   floatingContainer: { position: 'absolute', bottom: 60, right: 20, width: 50, height: 50, alignItems: 'center', justifyContent: 'center' },
   floatingEmoji: { position: 'absolute' },
+});
+
+const menuStyles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 12, paddingBottom: 36, maxHeight: '70%' },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, minHeight: 48, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.06)' },
+  itemText: { fontSize: 15, fontWeight: '500', flex: 1 },
+});
+
+const imageViewerStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
+  closeBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10, padding: 8 },
+  image: { width: '100%', height: '100%' },
 });
