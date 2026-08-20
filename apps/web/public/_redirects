@@ -5,3 +5,6 @@
 /admin/blog/edit  /admin/blog/edit  200
 /admin/verification/detail  /admin/verification/detail  200
 /post  /post  200
+/about  /about  200
+/policy  /policy  200
+/terms  /terms  200

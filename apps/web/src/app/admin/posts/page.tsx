@@ -43,7 +43,11 @@ export default function PostsPage() {
       const t = localStorage.getItem('admin_token');
       const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
       if (search) params.set('q', search);
-      if (vis) params.set('visibility', vis);
+      if (vis === 'deleted') {
+        params.set('deleted', 'true');
+      } else if (vis) {
+        params.set('visibility', vis);
+      }
       const res = await fetch(`${API}/admin/posts?${params}`, { headers: { Authorization: `Bearer ${t}` } });
       if (!res.ok) throw new Error('Failed to load posts');
       const d = await res.json();
@@ -235,7 +239,7 @@ export default function PostsPage() {
       ) : (
         <div className="space-y-3">
           {posts.map(p => (
-            <div key={p.id} className="bg-white rounded-xl border border-gray-100 hover:border-indigo-200 hover:shadow-md transition-all duration-200 overflow-hidden">
+            <div key={p.id} className={`bg-white rounded-xl border border-gray-100 hover:border-indigo-200 hover:shadow-md transition-all duration-200 overflow-hidden ${p.is_deleted ? 'opacity-60 border-red-200 bg-red-50/30' : ''}`}>
               <div className="p-5">
                 <div className="flex items-start gap-3">
                   <button
@@ -248,8 +252,8 @@ export default function PostsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-2">
                       <div className="flex items-center gap-2">
-                        {p.authorAvatarUrl ? (
-                          <img src={p.authorAvatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+                        {p.author_avatar ? (
+                          <img src={p.author_avatar} alt="" className="w-8 h-8 rounded-full object-cover" />
                         ) : (
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">{(p.authorUsername || 'U')[0].toUpperCase()}</div>
                         )}
@@ -261,22 +265,22 @@ export default function PostsPage() {
                     <p className="text-sm text-gray-700 line-clamp-3 cursor-pointer hover:text-gray-900 transition" onClick={() => expandPost(p.id)}>{p.content}</p>
                     <div className="flex items-center gap-4 mt-3 flex-wrap">
                       <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${VISIBILITY_STYLES[p.visibility] || VISIBILITY_STYLES.public}`}>{p.visibility}</span>
-                      {p.mediaUrls && p.mediaUrls.length > 0 && (
+                      {p.media_urls && p.media_urls.length > 0 && (
                         <span className="flex items-center gap-1 text-xs text-gray-400">
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" /></svg>
-                          {p.mediaUrls.length} media
+                          {p.media_urls.length} media
                         </span>
                       )}
-                      {p.reactionCount !== undefined && (
+                      {p.like_count !== undefined && p.like_count > 0 && (
                         <span className="flex items-center gap-1 text-xs text-gray-400">
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
-                          {p.reactionCount}
+                          {p.like_count}
                         </span>
                       )}
-                      {p.commentCount !== undefined && (
+                      {p.comment_count !== undefined && p.comment_count > 0 && (
                         <span className="flex items-center gap-1 text-xs text-gray-400">
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z" /></svg>
-                          {p.commentCount}
+                          {p.comment_count}
                         </span>
                       )}
                       <button
@@ -325,11 +329,11 @@ export default function PostsPage() {
                         </div>
                       </div>
 
-                      {expandedData.mediaUrls && expandedData.mediaUrls.length > 0 && (
+                      {expandedData.media_urls && expandedData.media_urls.length > 0 && (
                         <div>
                           <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Media</label>
                           <div className="grid grid-cols-3 gap-2">
-                            {expandedData.mediaUrls.map((url: string, i: number) => (
+                            {expandedData.media_urls.map((url: string, i: number) => (
                               <img key={i} src={url} alt="" className="w-full aspect-square object-cover rounded-lg border border-gray-200" />
                             ))}
                           </div>

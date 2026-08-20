@@ -719,6 +719,10 @@ class AdminStats(BaseModel):
     total_blog_posts: int
     new_users_today: int
     active_users_today: int
+    total_stories: int = 0
+    total_comments: int = 0
+    pending_verifications: int = 0
+    banned_users: int = 0
 
 
 # ── Blog ───────────────────────────────────────────────────────

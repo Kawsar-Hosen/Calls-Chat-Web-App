@@ -1545,6 +1545,127 @@ admin = APIRouter()
 _global_settings: dict = {"maintenance_mode": False, "registration_open": True, "announcement": None}
 
 
+# ── Admin Stories ─────────────────────────────────────────────────
+
+@admin.get("/admin/stories")
+async def admin_list_stories(
+    q: str | None = None,
+    limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0),
+    admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db),
+):
+    now = utcnow()
+    query = select(Story).where(Story.expires_at > now)
+    count_q = select(func.count()).select_from(Story).where(Story.expires_at > now)
+    if q:
+        like = f"%{q}%"
+        query = query.where(Story.content.ilike(like))
+        count_q = count_q.where(Story.content.ilike(like))
+    total = await db.scalar(count_q)
+    rows = (await db.execute(query.order_by(Story.created_at.desc()).limit(limit).offset(offset))).scalars().all()
+    items = []
+    for s in rows:
+        author = await db.get(User, s.author_id)
+        views = await db.scalar(select(func.count()).select_from(StoryView).where(StoryView.story_id == s.id))
+        expires_soon = (s.expires_at - now).total_seconds() < 3600
+        items.append({
+            "id": s.id, "content": s.content, "media_url": s.media_url, "media_type": s.media_type,
+            "author_id": s.author_id, "author_name": author.display_name if author else None,
+            "author_username": author.username if author else None,
+            "author_avatar": author.avatar_url if author else None,
+            "view_count": views or 0, "expires_soon": expires_soon,
+            "created_at": s.created_at.isoformat(), "expires_at": s.expires_at.isoformat(),
+        })
+    return {"items": items, "total": total or 0}
+
+
+@admin.get("/admin/stories/{story_id}")
+async def admin_get_story(
+    story_id: str,
+    admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db),
+):
+    story = await db.get(Story, story_id)
+    if not story:
+        raise HTTPException(404, "Story not found")
+    author = await db.get(User, story.author_id)
+    views = (await db.execute(
+        select(StoryView).where(StoryView.story_id == story.id).order_by(StoryView.viewed_at.desc())
+    )).scalars().all()
+    viewers = []
+    for v in views:
+        vu = await db.get(User, v.viewer_id)
+        viewers.append({"id": v.id, "user_id": v.viewer_id, "display_name": vu.display_name if vu else None, "avatar_url": vu.avatar_url if vu else None, "viewed_at": v.viewed_at.isoformat()})
+    return {
+        "id": story.id, "content": story.content, "media_url": story.media_url, "media_type": story.media_type,
+        "author_id": story.author_id, "author_name": author.display_name if author else None,
+        "author_username": author.username if author else None,
+        "author_avatar": author.avatar_url if author else None,
+        "view_count": len(views), "viewers": viewers,
+        "created_at": story.created_at.isoformat(), "expires_at": story.expires_at.isoformat(),
+    }
+
+
+@admin.delete("/admin/stories/{story_id}")
+async def admin_delete_story(
+    story_id: str,
+    admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db),
+):
+    story = await db.get(Story, story_id)
+    if not story:
+        raise HTTPException(404, "Story not found")
+    await db.delete(story)
+    await db.commit()
+    return {"success": True}
+
+
+# ── Admin Comments ────────────────────────────────────────────────
+
+@admin.get("/admin/comments")
+async def admin_list_comments(
+    q: str | None = None, post_id: str | None = None,
+    limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0),
+    admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db),
+):
+    query = select(PostComment).where(PostComment.deleted_at.is_(None))
+    count_q = select(func.count()).select_from(PostComment).where(PostComment.deleted_at.is_(None))
+    if q:
+        like = f"%{q}%"
+        query = query.where(PostComment.content.ilike(like))
+        count_q = count_q.where(PostComment.content.ilike(like))
+    if post_id:
+        query = query.where(PostComment.post_id == post_id)
+        count_q = count_q.where(PostComment.post_id == post_id)
+    total = await db.scalar(count_q)
+    rows = (await db.execute(query.order_by(PostComment.created_at.desc()).limit(limit).offset(offset))).scalars().all()
+    items = []
+    for c in rows:
+        author = await db.get(User, c.author_id)
+        post = await db.get(Post, c.post_id)
+        likes = await db.scalar(select(func.count()).select_from(CommentLike).where(CommentLike.comment_id == c.id))
+        items.append({
+            "id": c.id, "content": c.content, "post_id": c.post_id,
+            "post_content": post.content[:100] if post else None,
+            "author_id": c.author_id, "author_name": author.display_name if author else None,
+            "author_username": author.username if author else None,
+            "author_avatar": author.avatar_url if author else None,
+            "like_count": likes or 0, "parent_id": c.parent_id,
+            "created_at": c.created_at.isoformat(),
+        })
+    return {"items": items, "total": total or 0}
+
+
+@admin.delete("/admin/comments/{comment_id}")
+async def admin_delete_comment(
+    comment_id: str,
+    admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db),
+):
+    comment = await db.get(PostComment, comment_id)
+    if not comment:
+        raise HTTPException(404, "Comment not found")
+    comment.deleted_at = utcnow()
+    await db.commit()
+    return {"success": True}
+
+
 @admin.get("/admin/stats", response_model=AdminStats)
 async def admin_stats(admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     now = utcnow()
@@ -1556,11 +1677,17 @@ async def admin_stats(admin_user: User = Depends(get_admin_user), db: AsyncSessi
     total_blog = await db.scalar(select(func.count()).select_from(BlogPost))
     new_today = await db.scalar(select(func.count()).select_from(User).where(User.created_at >= today_start))
     active_today = await db.scalar(select(func.count()).select_from(User).where(User.is_online == True))
+    total_stories = await db.scalar(select(func.count()).select_from(Story).where(Story.expires_at > utcnow()))
+    total_comments = await db.scalar(select(func.count()).select_from(PostComment).where(PostComment.deleted_at.is_(None)))
+    pending_verifs = await db.scalar(select(func.count()).select_from(VerificationRequest).where(VerificationRequest.status == "pending"))
+    banned = await db.scalar(select(func.count()).select_from(User).where(User.is_banned == True))
     return AdminStats(
         total_users=total_users or 0, total_posts=total_posts or 0,
         total_reports=total_reports or 0, pending_reports=pending_reports or 0,
         total_blog_posts=total_blog or 0, new_users_today=new_today or 0,
         active_users_today=active_today or 0,
+        total_stories=total_stories or 0, total_comments=total_comments or 0,
+        pending_verifications=pending_verifs or 0, banned_users=banned or 0,
     )
 
 
@@ -1697,24 +1824,39 @@ async def admin_update_report(report_id: str, data: AdminReportUpdate, admin_use
 
 @admin.get("/admin/posts")
 async def admin_list_posts(
-    q: str | None = None, limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0),
+    q: str | None = None, visibility: str | None = None, deleted: bool | None = None,
+    limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0),
     admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db),
 ):
-    query = select(Post).where(Post.deleted_at.is_(None))
-    count_q = select(func.count()).select_from(Post).where(Post.deleted_at.is_(None))
+    if deleted:
+        query = select(Post)
+        count_q = select(func.count()).select_from(Post)
+    else:
+        query = select(Post).where(Post.deleted_at.is_(None))
+        count_q = select(func.count()).select_from(Post).where(Post.deleted_at.is_(None))
     if q:
         like = f"%{q}%"
         query = query.where(Post.content.ilike(like))
         count_q = count_q.where(Post.content.ilike(like))
+    if visibility:
+        query = query.where(Post.visibility == visibility)
+        count_q = count_q.where(Post.visibility == visibility)
     total = await db.scalar(count_q)
     rows = (await db.execute(query.order_by(Post.created_at.desc()).limit(limit).offset(offset))).scalars().all()
     items = []
     for p in rows:
         author = await db.get(User, p.author_id)
+        likes = await db.scalar(select(func.count()).select_from(PostLike).where(PostLike.post_id == p.id))
+        comments = await db.scalar(select(func.count()).select_from(PostComment).where(PostComment.post_id == p.id, PostComment.deleted_at.is_(None)))
+        media_rows = (await db.execute(select(PostMedia).where(PostMedia.post_id == p.id))).scalars().all()
         items.append({
             "id": p.id, "content": p.content, "visibility": p.visibility,
             "author_id": p.author_id, "author_name": author.display_name if author else None,
             "author_username": author.username if author else None,
+            "author_avatar": author.avatar_url if author else None,
+            "media_urls": [m.url for m in media_rows],
+            "like_count": likes or 0, "comment_count": comments or 0,
+            "is_deleted": p.deleted_at is not None,
             "created_at": p.created_at.isoformat(),
         })
     return {"items": items, "total": total or 0}
@@ -2137,7 +2279,15 @@ async def admin_update_post(
     if "content" in data:
         post.content = data["content"]
     await db.commit()
-    return {"success": True}
+    await db.refresh(post)
+    author = await db.get(User, post.author_id)
+    return {
+        "id": post.id, "content": post.content, "visibility": post.visibility,
+        "author_id": post.author_id, "author_name": author.display_name if author else None,
+        "author_username": author.username if author else None,
+        "author_avatar": author.avatar_url if author else None,
+        "created_at": post.created_at.isoformat(),
+    }
 
 
 @admin.patch("/admin/reports/{report_id}/auto-action")

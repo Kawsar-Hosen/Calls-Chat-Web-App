@@ -70,6 +70,13 @@ export default function Dashboard() {
     { label: 'Pending Verifications', value: stats.pendingVerifications || 0, color: 'text-indigo-600 bg-indigo-50' },
   ];
 
+  const tertiaryStats = [
+    { label: 'Total Stories', value: stats.total_stories || 0, color: 'text-pink-600 bg-pink-50' },
+    { label: 'Total Comments', value: stats.total_comments || 0, color: 'text-teal-600 bg-teal-50' },
+    { label: 'Pending Verifications', value: stats.pending_verifications || 0, color: 'text-violet-600 bg-violet-50' },
+    { label: 'Banned Users', value: stats.banned_users || 0, color: 'text-red-600 bg-red-50' },
+  ];
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900">Dashboard</h1>
@@ -92,6 +99,16 @@ export default function Dashboard() {
       {/* Secondary Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {secondaryStats.map(s => (
+          <div key={s.label} className="bg-white rounded-xl border border-gray-100 p-4">
+            <p className={`text-2xl font-extrabold ${s.color.split(' ')[0]}`}>{(s.value ?? 0).toLocaleString()}</p>
+            <p className="text-xs text-gray-500 mt-1 font-medium">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Tertiary Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {tertiaryStats.map(s => (
           <div key={s.label} className="bg-white rounded-xl border border-gray-100 p-4">
             <p className={`text-2xl font-extrabold ${s.color.split(' ')[0]}`}>{(s.value ?? 0).toLocaleString()}</p>
             <p className="text-xs text-gray-500 mt-1 font-medium">{s.label}</p>
